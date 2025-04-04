@@ -1,8 +1,6 @@
 """Unit tests for the solitaire game scenario."""
 import unittest
-import io
-import sys
-import os
+import random
 
 # # Adjust path to import from the parent directory (magic_engine)
 # # This ensures the test runner can find the 'magic_engine' package
@@ -14,7 +12,7 @@ from magic_engine.game import ConcreteGame
 from magic_engine.game_objects.concrete import ConcretePermanent
 from magic_engine.enums import PhaseType, StepType, ZoneType, ManaType, StatusType, GameResult, CardType
 from magic_engine.types import DeckDict, PlayerId
-from magic_engine.constants import STARTING_HAND_SIZE
+from magic_engine.constants import STARTING_HAND_SIZE, STARTING_LIBRARY_SIZE
 
 # Suppress print statements during tests for cleaner output
 # Comment this out if you want to see the game's print statements
@@ -29,6 +27,9 @@ class TestSolitaireTurn(unittest.TestCase):
 
     def setUp(self):
         """Set up a new game instance for each test."""
+        # Seed the random number generator for deterministic shuffling during tests
+        random.seed(42) # Use a fixed seed
+
         # Suppress prints for setup
         # old_print = builtins.print
         # builtins.print = muted_print
@@ -36,7 +37,7 @@ class TestSolitaireTurn(unittest.TestCase):
         self.game = ConcreteGame()
         self.player_id: PlayerId = 0
         # Deck consists of 60 Plains cards
-        self.deck: DeckDict = {self.player_id: ["plains_basic"] * 60}
+        self.deck: DeckDict = {self.player_id: ["plains_basic"] * STARTING_LIBRARY_SIZE}
         self.game.start_game(self.deck)
         self.player = self.game.get_player(self.player_id)
 
@@ -46,8 +47,8 @@ class TestSolitaireTurn(unittest.TestCase):
         # Ensure setup finished correctly
         self.assertIsNotNone(self.player)
         self.assertEqual(len(self.game.players), 1)
-        self.assertEqual(self.player.get_library().get_count(), 53) # 60 - 7 draw
-        self.assertEqual(self.player.get_hand().get_count(), 7)
+        self.assertEqual(self.player.get_library().get_count(), STARTING_LIBRARY_SIZE - STARTING_HAND_SIZE)
+        self.assertEqual(self.player.get_hand().get_count(), STARTING_HAND_SIZE)
         self.assertEqual(self.game.turn_manager.turn_number, 1)
         # start_game advances to upkeep automatically
         self.assertEqual(self.game.turn_manager.current_phase, PhaseType.BEGINNING)
@@ -67,7 +68,7 @@ class TestSolitaireTurn(unittest.TestCase):
         self.assertEqual(tm.current_phase, PhaseType.BEGINNING)
         self.assertEqual(tm.current_step, StepType.DRAW)
         # Player should have drawn a card
-        self.assertEqual(self.player.get_hand().get_count(), 8)
+        self.assertEqual(self.player.get_hand().get_count(), STARTING_HAND_SIZE + 1)
 
         tm.advance(self.game)
         self.assertEqual(tm.current_phase, PhaseType.PRECOMBAT_MAIN)
