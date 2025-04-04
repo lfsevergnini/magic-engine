@@ -25,18 +25,15 @@ class CardType(Enum):
 
 class SubType(Enum):
     # This will be a very long list! e.g., Goblin, Elf, Island, Aura, Equipment...
-    # Basic Lands
+    GOBLIN = auto()
+    ELF = auto()
     ISLAND = auto()
     FOREST = auto()
     PLAINS = auto()
     MOUNTAIN = auto()
     SWAMP = auto()
-    # Creatures
-    GOBLIN = auto()
-    ELF = auto()
     CAT = auto()
     BEAR = auto()
-    # The rest
     AURA = auto()
     EQUIPMENT = auto()
     # ... add many more
