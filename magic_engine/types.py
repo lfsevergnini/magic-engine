@@ -1,5 +1,5 @@
 """Type Aliases for Clarity"""
-from typing import TypeAlias, Union, Any, Dict, List, Set, Optional
+from typing import TYPE_CHECKING, TypeAlias, Union, Any, Dict, List, Set, Optional
 
 # Forward declarations might be needed here depending on final structure
 # to avoid circular imports while still enabling type checking.
@@ -13,7 +13,7 @@ Timestamp: TypeAlias = int # For layer system
 # Forward declare classes used in complex type hints
 # This allows type checkers to understand the structure without runtime imports.
 # We'll use typing.TYPE_CHECKING in actual class files for conditional imports.
-if False: # TYPE_CHECKING: - Pylance/MyPy understand this idiom
+if TYPE_CHECKING: # - Pylance/MyPy understand this idiom
     # Define placeholder classes or import them here
     from .enums import Color, CardType, SubType, SuperType, ManaType, ManaSymbol, PhaseType, StepType, LayerType, CounterType, StatusType, VisibilityType, ZoneType, GameResult
     from .game import Game
