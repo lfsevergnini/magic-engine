@@ -24,7 +24,7 @@ Unit tests are included to verify the functionality of the core components. To r
 3.  Run the following command in your terminal:
 
     ```bash
-    python3 -m unittest discover tests
+    python -m unittest discover tests
     ```
 
 This command uses Python's built-in `unittest` module to discover and run all tests located in the `tests/` directory.
