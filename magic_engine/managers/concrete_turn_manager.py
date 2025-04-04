@@ -47,7 +47,7 @@ class SimpleTurnManager(TurnManager):
         """Actions at the start of a new turn."""
         self.turn_number += 1
         print(f"\n===== Starting Turn {self.turn_number} for Player {self.active_player.id} ====")
-        self.active_player.lands_played_this_turn = 0
+        # self.active_player.lands_played_this_turn = 0 # Removed direct reset
         # Set phase/step indices for the beginning phase
         self._phase_index = PHASE_ORDER.index(PhaseType.BEGINNING)
         self._step_index = -1 # Will advance to Untap next
@@ -99,6 +99,10 @@ class SimpleTurnManager(TurnManager):
 
     def _perform_untap_step(self, game: 'Game'):
         print(f"Performing Untap Step for Player {self.active_player.id}")
+        
+        # Reset turn-based state for active player (e.g., land drops)
+        self.active_player.reset_turn_based_state()
+        
         battlefield = game.get_zone("battlefield")
         permanents = battlefield.get_objects(game)
         for perm in permanents:

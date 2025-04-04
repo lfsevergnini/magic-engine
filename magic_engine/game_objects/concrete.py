@@ -4,10 +4,10 @@ import copy
 
 from .base import GameObject
 from .permanent import Permanent
-from ..enums import StatusType, CounterType, ManaType, SubType
+from ..enums import StatusType, CounterType, ManaType, SubType, CardType
 
 if TYPE_CHECKING:
-    from ..types import ObjectId, Timestamp, PlayerId, CardOrTokenData, CharacteristicsDict, CountersDict, AttachmentsList, AttachedToObject
+    from ..types import ObjectId, Timestamp, CardOrTokenData, CharacteristicsDict, CountersDict, AttachmentsList, AttachedToObject
     from ..player.player import Player
     from ..zones.base import Zone
     from ..game import Game
@@ -17,13 +17,13 @@ if TYPE_CHECKING:
 class ConcreteGameObject(GameObject):
     """A concrete implementation of the base GameObject."""
 
-    def __init__(self, game: 'Game', object_id: 'ObjectId', card_data: 'CardOrTokenData', owner: 'Player', controller: 'Player', zone: 'Zone'):
+    def __init__(self, game: 'Game', object_id: 'ObjectId', card_data: 'CardOrTokenData', owner: 'Player', controller: 'Player', initial_zone: Optional['Zone']):
         self.game = game
         self.id: 'ObjectId' = object_id
         self.card_data: 'CardOrTokenData' = card_data
         self.owner: 'Player' = owner
         self.controller: 'Player' = controller
-        self.current_zone: 'Zone' = zone
+        self.current_zone: Optional['Zone'] = initial_zone
         self.timestamp: 'Timestamp' = game.generate_timestamp() # Game needs a timestamp generator
         self.status: Set['StatusType'] = set()
         self.counters: 'CountersDict' = {}
@@ -99,14 +99,17 @@ class ConcreteGameObject(GameObject):
     def move_to_zone(self, target_zone: 'Zone', game: 'Game') -> None:
         """Moves the object between zones."""
         source_zone = self.current_zone
-        # TODO: Publish 'ZoneChangeEvent' before and after
-        if source_zone:
-            source_zone.remove(self.id)
-        target_zone.add(self.id)
+        source_zone_id_str = source_zone.id if source_zone else "None"
+
+        # Update current_zone *before* modifying zone contents
         self.current_zone = target_zone
+
+        # TODO: Publish 'ZoneChangeEvent' before and after
+        target_zone.add(self.id)
+
         # TODO: Handle status changes (e.g., losing summoning sickness on battlefield entry)
         # TODO: Handle counters/attachments falling off
-        print(f"Moved {self.id} ({self.card_data.name}) from {source_zone.id} to {target_zone.id}")
+        print(f"Moved {self.id} ({self.card_data.name}) from {source_zone_id_str} to {target_zone.id}")
 
     def add_counter(self, counter_type: 'CounterType', amount: int = 1) -> None:
         self.counters[counter_type] = self.counters.get(counter_type, 0) + amount
@@ -141,7 +144,7 @@ class ConcretePermanent(ConcreteGameObject, Permanent):
         self.damage_marked: int = 0
         self.combat_state: Optional[Any] = None # Define CombatState later
 
-        super().__init__(game, object_id, card_data, owner, controller, zone)
+        super().__init__(game, object_id, card_data, owner, controller, initial_zone=zone)
 
         # Apply initial statuses (e.g., summoning sickness for creatures)
         # This is simplified; rules are more complex (noncreatures becoming creatures)

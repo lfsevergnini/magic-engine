@@ -4,6 +4,7 @@ from typing import List, Optional, TYPE_CHECKING
 
 from .base import Zone
 from ..enums import ZoneType, VisibilityType
+from .stack import Stack # Import the Stack interface
 
 if TYPE_CHECKING:
     from ..types import ZoneId, ObjectId
@@ -97,5 +98,32 @@ class Graveyard(ConcreteZone):
      def __init__(self, zone_id: 'ZoneId', owner: 'Player'):
         super().__init__(zone_id, ZoneType.GRAVEYARD, owner, VisibilityType.PUBLIC)
         # Order matters - cards enter on top (end of list)
+
+class ConcreteStack(ConcreteZone, Stack):
+    """Concrete implementation of the Stack zone."""
+    def __init__(self, zone_id: 'ZoneId' = "stack"):
+        # Stack is public, has no owner
+        super().__init__(zone_id, ZoneType.STACK, None, VisibilityType.PUBLIC)
+
+    def push(self, obj_id: 'ObjectId') -> None:
+        """Adds an object to the top of the stack (position 0)."""
+        # Add to the beginning of the list represents the top for pop/peek
+        super().add(obj_id, position=0)
+        print(f"Pushed {obj_id} onto stack. Stack: {self.objects}")
+
+    def pop(self) -> Optional['ObjectId']:
+        """Removes and returns the top object ID from the stack."""
+        if not self.is_empty():
+            obj_id = self.objects.pop(0) # Remove from the beginning (top)
+            print(f"Popped {obj_id} from stack. Stack: {self.objects}")
+            return obj_id
+        print("Tried to pop from empty stack.")
+        return None
+
+    def peek(self) -> Optional['ObjectId']:
+        """Returns the top object ID without removing it."""
+        if not self.is_empty():
+            return self.objects[0] # Top is the first element
+        return None
 
 # Add Stack, Exile, Command later if needed 

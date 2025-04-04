@@ -1,0 +1,4 @@
+"""Game constants."""
+
+STARTING_HAND_SIZE = 7
+STARTING_LIFE_TOTAL = 20 

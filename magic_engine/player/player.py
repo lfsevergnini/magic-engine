@@ -94,5 +94,14 @@ class Player(ABC):
     # --- Choices ---
     @abstractmethod
     def make_choice(self, choice_type: str, options: 'ChoiceOptions', prompt: str) -> 'ChoiceResult':
-        """Delegates making a decision to the player's input_handler."""
+        """Asks the player (via their input handler) to make a generic choice."""
+        pass
+
+    @abstractmethod
+    def reset_turn_based_state(self) -> None:
+        """Resets counters and states that refresh each turn (e.g., lands played)."""
+        pass
+
+    @abstractmethod
+    def __repr__(self) -> str:
         pass 

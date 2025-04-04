@@ -2,7 +2,7 @@
 from typing import Dict, Optional, TYPE_CHECKING, List, Any
 
 from .player import Player
-from ..enums import ZoneType, CounterType, ManaType
+from ..enums import ZoneType, CounterType, ManaType, CardType, PhaseType
 from ..zones.concrete import Library, Hand, Graveyard # Import concrete zones
 from ..player.concrete_mana_pool import ConcreteManaPool # Import concrete pool
 from ..game_objects.concrete import ConcretePermanent # Import concrete permanent
@@ -173,6 +173,9 @@ class ConcretePlayer(Player):
 
         print(f"Player {self.id} playing land {card_obj}")
         battlefield = self.game.get_zone("battlefield")
+        # Remove from hand first
+        from_zone.remove(card_obj.id)
+        # Then move the object representation
         card_obj.move_to_zone(battlefield, self.game)
         self.lands_played_this_turn += 1
         # TODO: Publish LandPlayedEvent
@@ -187,6 +190,12 @@ class ConcretePlayer(Player):
         # Delegates to the input handler
         return self.input_handler.make_generic_choice(options, prompt)
         # Or call specific choice methods on input_handler
+
+    def reset_turn_based_state(self) -> None:
+        """Resets counters and states that refresh each turn."""
+        self.lands_played_this_turn = 0
+        # TODO: Reset other turn-based states if added
+        print(f"Reset turn state for Player {self.id} (land drops: {self.lands_played_this_turn})")
 
     def __repr__(self) -> str:
         return f"Player<{self.id} ({self.life} life)>" 

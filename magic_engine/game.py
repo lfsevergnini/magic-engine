@@ -1,6 +1,6 @@
 """The main Game interface, orchestrating all components."""
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING, Type
 
 if TYPE_CHECKING:
     from .types import PlayerId, ObjectId, ZoneId, CardId, DeckDict
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .cards.card_data import CardData
     from .cards.token_data import TokenData
     from .enums import GameResult, CardType, StepType
+    from .game_objects.concrete import ConcreteGameObject, ConcretePermanent
 
 class Game(ABC):
     """Central game orchestrator, holding references to all components and game state."""
@@ -113,10 +114,11 @@ from .player.input_handler import PlayerInputHandler # For type hint
 from .stubs import AutoPlayerInputHandler, StubEventBus, StubSbaChecker, StubEffectManager, StubGameState
 from .managers.concrete_turn_manager import SimpleTurnManager
 from .managers.concrete_priority_manager import SolitairePriorityManager
-from .zones.concrete import Battlefield, Stack # Concrete zones
+from .zones.concrete import Battlefield, ConcreteStack
+from .game_objects.base import GameObject # Added runtime import
 from .game_objects.concrete import ConcreteGameObject, ConcretePermanent
 from .card_definitions.basic_lands import PlainsData, ForestData # Example card data
-from .enums import GameResult, ZoneType, ManaType
+from .enums import GameResult, ZoneType, ManaType, CardType, StepType # Added StepType
 import time # For timestamp
 
 
@@ -182,18 +184,18 @@ class ConcreteGame(Game):
 
         # --- Create Shared Zones ---
         battlefield = Battlefield()
-        stack = Stack(zone_id="stack") # Need concrete Stack later
+        stack = ConcreteStack(zone_id="stack")
         self.zones[battlefield.id] = battlefield
         self.zones[stack.id] = stack
 
         # --- Create Player ---
         player_id, deck_list = list(decks.items())[0]
-        # Create the auto-input handler first, player needs it
-        # Need to handle the case where player is not yet created for input handler init
-        temp_player_ref = {"player": None} # Use a mutable container
-        auto_input_handler = AutoPlayerInputHandler(temp_player_ref, self)
-        player = ConcretePlayer(player_id, self, auto_input_handler)
-        temp_player_ref["player"] = player # Now set the player reference in the handler
+        # Create the player first
+        player = ConcretePlayer(player_id, self, None) # Pass None for handler initially
+        # Now create the handler, passing the actual player object
+        auto_input_handler = AutoPlayerInputHandler(player, self)
+        # Assign the handler back to the player
+        player.input_handler = auto_input_handler
         self.players.append(player)
 
         print(f"Created Player {player.id}")
@@ -213,11 +215,14 @@ class ConcreteGame(Game):
                 continue
 
             obj_id = self.generate_object_id()
-            # Create the base object first (representing the card)
-            # It starts conceptually "outside the game" then moves to the library
-            game_obj = ConcreteGameObject(self, obj_id, card_data, owner=player, controller=player, zone=None) # Zone set by move
+            # Create ConcretePermanent for permanent types, GameObject otherwise
+            if any(pt in card_data.card_types for pt in [CardType.LAND, CardType.CREATURE, CardType.ARTIFACT, CardType.ENCHANTMENT, CardType.PLANESWALKER]):
+                 game_obj = ConcretePermanent(self, obj_id, card_data, owner=player, controller=player, zone=library)
+            else: # Instant, Sorcery, etc.
+                 game_obj = ConcreteGameObject(self, obj_id, card_data, owner=player, controller=player, initial_zone=library)
+            
             self.register_object(game_obj)
-            # Add ID to library zone list (object is moved implicitly)
+            # Add the ID to the library's list of objects
             library.add(obj_id, to_bottom=True) # Add to bottom before shuffle
 
         print(f"Library populated with {library.get_count()} cards.")
@@ -235,7 +240,9 @@ class ConcreteGame(Game):
 
         # Start the first turn explicitly
         self.turn_manager.start_turn(self)
-        # Advance to the first step where priority is given (Upkeep)
+        # Advance to Untap
+        self.turn_manager.advance(self)
+        # Advance to Upkeep to match test expectation
         self.turn_manager.advance(self)
         # self.turn_manager.advance(self) # Advance to Draw
         # self.turn_manager.advance(self) # Advance to Main
@@ -260,14 +267,14 @@ class ConcreteGame(Game):
                     return zone
         return self.zones.get(zone_id)
 
-    def get_stack(self) -> 'Stack':
+    def get_stack(self) -> 'ConcreteStack':
         # Need a concrete Stack implementation first
         stack_zone = self.zones.get("stack")
-        if isinstance(stack_zone, Stack):
+        if isinstance(stack_zone, ConcreteStack):
             return stack_zone
         else:
             # This should not happen if setup is correct
-            raise TypeError("Stack zone is not of type Stack!")
+            raise TypeError("Stack zone is not of type ConcreteStack!")
 
     def create_token(self, token_data: 'TokenData', controller: 'Player') -> 'Permanent':
         # TODO: Implement token creation
