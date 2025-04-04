@@ -11,6 +11,7 @@ import random
 from magic_engine.game import ConcreteGame
 from magic_engine.game_objects.concrete import ConcretePermanent
 from magic_engine.enums import PhaseType, StepType, ZoneType, ManaType, StatusType, GameResult, CardType
+from magic_engine.abilities.mana_ability import TapManaAbility
 from magic_engine.types import DeckDict, PlayerId
 from magic_engine.constants import STARTING_HAND_SIZE, STARTING_LIBRARY_SIZE
 
@@ -160,11 +161,28 @@ class TestSolitaireTurn(unittest.TestCase):
         land_obj = bf.get_objects(self.game)[0]
         self.assertIsInstance(land_obj, ConcretePermanent)
 
-        # Manually tap the land (tests don't usually interact with input handler directly)
+        # Manually tap the land and activate its mana ability
         self.assertEqual(self.player.mana_pool.get_amount(ManaType.WHITE), 0)
+        
+        # Find the tap mana ability
+        tap_ability = None
+        for ability in land_obj.abilities:
+            if isinstance(ability, TapManaAbility) and ability.mana_type == ManaType.WHITE:
+                tap_ability = ability
+                break
+        self.assertIsNotNone(tap_ability, "Plains should have a White TapManaAbility")
+
+        # Check if it can be activated (which requires tapping)
+        self.assertTrue(tap_ability.can_activate(self.game), "Ability should be activatable before tapping")
+
+        # Tap the permanent first (game action)
         tapped = land_obj.tap()
         self.assertTrue(tapped, "Land should be tappable")
         self.assertTrue(land_obj.has_status(StatusType.TAPPED), "Land should have TAPPED status")
+
+        # Now activate the ability (resolves immediately)
+        print(f"Test: Activating ability {tap_ability}")
+        tap_ability.activate(self.game) # This calls produce_mana
 
         # Check mana pool
         self.assertEqual(self.player.mana_pool.get_amount(ManaType.WHITE), 1, "Mana pool should have 1 white mana")
@@ -173,6 +191,9 @@ class TestSolitaireTurn(unittest.TestCase):
         tapped_again = land_obj.tap()
         self.assertFalse(tapped_again, "Already tapped land should not tap again")
         self.assertEqual(self.player.mana_pool.get_amount(ManaType.WHITE), 1, "Mana pool should still have 1 white mana")
+
+        # Ability should not be activatable now
+        self.assertFalse(tap_ability.can_activate(self.game), "Ability should not be activatable when tapped")
 
     def test_04_full_turn_end(self):
         """Test running the game loop until the end of the first turn."""

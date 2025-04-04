@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from ..game import Game
     from ..cards.ability_definition import AbilityDefinition
     from ..cards.card_data import CardData
+    from ..abilities.base import Ability
 
 class ConcreteGameObject(GameObject):
     """A concrete implementation of the base GameObject."""
@@ -136,45 +137,104 @@ class ConcreteGameObject(GameObject):
         name = self.card_data.name if self.card_data else "Unknown"
         return f"Obj<{self.id}:{name}>"
 
-class ConcretePermanent(ConcreteGameObject, Permanent):
-    """Concrete implementation for permanents on the battlefield."""
-    def __init__(self, game: 'Game', object_id: 'ObjectId', card_data: 'CardOrTokenData', owner: 'Player', controller: 'Player', zone: 'Zone'):
-        # Initialize Permanent specific fields BEFORE calling super().__init__
-        # because super init might call methods that rely on these fields.
+class ConcretePermanent(Permanent):
+    """Concrete implementation of a permanent on the battlefield."""
+    def __init__(self, game: 'Game', obj_id: int, card_data: 'CardData', owner: 'Player', controller: 'Player', zone: 'Zone'):
+        # Call the Permanent's __init__ which in turn calls GameObject's
+        # Do NOT pass zone here; GameObject.__init__ doesn't take it.
+        super().__init__(game, obj_id, card_data, owner, controller)
+        # Set zone after base initialization
+        self.current_zone = zone
+
+        # Initialize ConcretePermanent specific fields
+        self.statuses: Set[StatusType] = set()
         self.damage_marked: int = 0
-        self.combat_state: Optional[Any] = None # Define CombatState later
+        self.attached_to: Optional['Permanent'] = None
+        self.attachments: List['Permanent'] = []
+        self.counters: Dict[CounterType, int] = {}
 
-        super().__init__(game, object_id, card_data, owner, controller, initial_zone=zone)
+        # Instantiate abilities from CardData
+        self.abilities: List['Ability'] = []
+        if card_data.abilities:
+            for ability_type in card_data.abilities:
+                self.abilities.append(ability_type(source=self, controller=self.controller))
 
-        # Apply initial statuses (e.g., summoning sickness for creatures)
-        # This is simplified; rules are more complex (noncreatures becoming creatures)
-        characteristics = self.get_characteristics(game)
-        if CardType.CREATURE in characteristics.get("card_types", set()):
-            self.set_status(StatusType.SUMMONING_SICKNESS, True)
+    # --- Implementation of Abstract Methods ---
+    def move_to_zone(self, target_zone: 'Zone', game: 'Game') -> None:
+        # Reuse the logic from ConcreteGameObject initially
+        source_zone = self.current_zone
+        source_zone_id_str = source_zone.id if source_zone else "None"
+        self.current_zone = target_zone # Update object's current zone
+        target_zone.add(self.id)       # Add object ID to target zone's list
+        print(f"Moved {self.id} ({self.card_data.name}) from {source_zone_id_str} to {target_zone.id}")
+        # TODO: Add event publishing (LeftZoneEvent, EnteredZoneEvent)
+        # TODO: Handle zone change triggers (e.g., enters/leaves battlefield)
+        # TODO: If moving from battlefield, remove from combat, remove counters/attachments?
 
-    # --- Permanent specific methods ---
-    def tap(self) -> bool:
-        """Taps the permanent if able. Adds mana for basic lands (simplification)."""
-        if not self.has_status(StatusType.TAPPED):
-            self.set_status(StatusType.TAPPED, True)
-            print(f"Tapped {self}")
+    def get_base_characteristics(self, game: 'Game') -> Dict[str, Any]:
+        # Start with printed characteristics from CardData
+        # TODO: Convert CardData fields to a mutable dict? How to handle optional fields?
+        # Placeholder implementation
+        return {
+            "name": self.card_data.name,
+            "mana_cost": self.card_data.mana_cost,
+            "colors": set(self.card_data.colors),
+            "card_types": set(self.card_data.card_types),
+            "subtypes": set(self.card_data.subtypes),
+            "supertypes": set(self.card_data.supertypes),
+            "abilities": list(self.card_data.abilities),
+            "power": self.card_data.power,
+            "toughness": self.card_data.toughness,
+            "loyalty": self.card_data.loyalty,
+            # ... add other relevant base characteristics
+        }
 
-            # --- Intrinsic Mana Ability Logic (Simplified) ---
-            characteristics = self.get_characteristics(self.game)
-            subtypes = characteristics.get("subtypes", set())
-            if SubType.PLAINS in subtypes:
-                self.controller.mana_pool.add(ManaType.WHITE, 1, source_id=self.id)
-            elif SubType.FOREST in subtypes:
-                self.controller.mana_pool.add(ManaType.GREEN, 1, source_id=self.id)
-            # Add other basic land types (Island, Swamp, Mountain) here if needed
-            # -----------------------------------------------
+    def get_characteristics(self, game: 'Game') -> Dict[str, Any]:
+        # Applies continuous effects based on layers
+        # For now, just return base characteristics (placeholder)
+        # TODO: Implement Layer System
+        base_chars = self.get_base_characteristics(game)
+        # Modify base_chars based on effects (copy, control, text, type, color, ability, p/t)
+        return base_chars
 
-            # TODO: Publish TappedEvent
-            return True
-        return False
+    def get_abilities(self, game: 'Game') -> List['Ability']:
+        # Combines inherent abilities with granted abilities
+        # For now, just return inherent abilities (placeholder)
+        # TODO: Implement Layer 6 (Ability adding/removing effects)
+        return list(self.abilities) # Return a copy
+
+    def add_counter(self, counter_type: 'CounterType', amount: int = 1) -> None:
+        """Adds counters of a specific type."""
+        self.counters[counter_type] = self.counters.get(counter_type, 0) + amount
+        print(f"Added {amount} {counter_type.name} counter(s) to {self}. Total: {self.counters[counter_type]}")
+        # TODO: Publish CounterAddedEvent
+
+    def remove_counter(self, counter_type: 'CounterType', amount: int = 1) -> None:
+        """Removes counters of a specific type, minimum zero."""
+        current_amount = self.counters.get(counter_type, 0)
+        amount_to_remove = min(amount, current_amount)
+        if amount_to_remove > 0:
+            self.counters[counter_type] = current_amount - amount_to_remove
+            print(f"Removed {amount_to_remove} {counter_type.name} counter(s) from {self}. Remaining: {self.counters[counter_type]}")
+            # TODO: Publish CounterRemovedEvent
+            if self.counters[counter_type] == 0:
+                del self.counters[counter_type]
+
+    # --- Statuses ---
+    def set_status(self, status: StatusType, value: bool) -> None:
+        if value:
+            self.statuses.add(status)
+        else:
+            self.statuses.discard(status)
+
+    def has_status(self, status: StatusType) -> bool:
+        return status in self.statuses
+
+    def is_tapped(self) -> bool:
+        return self.has_status(StatusType.TAPPED)
 
     def untap(self) -> bool:
-        """Untaps the permanent."""
+        """Untaps the permanent if able."""
         if self.has_status(StatusType.TAPPED):
             self.set_status(StatusType.TAPPED, False)
             print(f"Untapped {self}")
@@ -182,7 +242,25 @@ class ConcretePermanent(ConcreteGameObject, Permanent):
             return True
         return False
 
+    def tap(self) -> bool:
+        """Taps the permanent if able."""
+        if not self.has_status(StatusType.TAPPED):
+            self.set_status(StatusType.TAPPED, True)
+            print(f"Tapped {self}")
+            # --- Removed intrinsic mana ability logic --- 
+            # TODO: Publish TappedEvent or handle via TapCost/Ability Activation
+            return True
+        return False
+
+    # --- Combat ---
+    # ... (add combat related methods: assign_damage, deal_damage, etc.)
+
+    # --- Counters ---
+    # ... (add counter methods)
+
+    # --- Attachments ---
+    # ... (add attachment methods)
+
     def __repr__(self) -> str:
-        name = self.card_data.name if self.card_data else "Unknown"
-        status_str = f" ({', '.join(s.name for s in self.status)})" if self.status else ""
-        return f"Perm<{self.id}:{name}{status_str}>" 
+        status_str = f" ({', '.join(s.name for s in self.statuses)})" if self.statuses else ""
+        return f"Perm<{self.id}:{self.card_data.name}{status_str}>"

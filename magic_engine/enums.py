@@ -46,6 +46,14 @@ class SuperType(Enum):
     ONGOING = auto() # For Schemes
     HOST = auto() # For Augment
 
+class Rarity(Enum):
+    COMMON = auto()
+    UNCOMMON = auto()
+    RARE = auto()
+    MYTHIC = auto()
+    SPECIAL = auto() # e.g., Timeshifted
+    BONUS = auto() # e.g., Masterpieces
+
 class ManaType(Enum):
     WHITE = auto()
     BLUE = auto()

@@ -16,15 +16,28 @@ class GameObject(ABC):
     card_data: Optional['CardOrTokenData'] # Original definition (None for AbilityOnStack?)
     owner: 'Player' # The player who started the game with the card
     controller: 'Player' # The player who currently controls the object
-    current_zone: 'Zone' # The zone the object is currently in
+    current_zone: Optional['Zone'] # Optional: Might not be in a zone initially?
     timestamp: 'Timestamp' # For layer application order
     status: Set['StatusType'] # Tapped, Flipped, FaceDown, PhasedOut, etc.
     counters: 'CountersDict' # Type and count of counters
     attachments: 'AttachmentsList' # IDs of Auras/Equipment attached TO this object
     attached_to: 'AttachedToObject' # ID of object/player this Aura/Equipment is attached TO
 
+    def __init__(self, game: 'Game', obj_id: 'ObjectId', card_data: Optional['CardOrTokenData'], owner: 'Player', controller: 'Player'):
+        self.id = obj_id
+        self.card_data = card_data
+        self.owner = owner
+        self.controller = controller
+        self.current_zone = None # Must be set by subclass or move_to_zone
+        self.timestamp = game.generate_timestamp() # Get timestamp from game
+        # Initialize potentially shared state attributes - subclasses might override
+        self.status: Set[StatusType] = set()
+        self.counters: 'CountersDict' = {}
+        self.attachments: 'AttachmentsList' = []
+        self.attached_to: 'AttachedToObject' = None
+
     @abstractmethod
-    def get_base_characteristics(self) -> 'CharacteristicsDict':
+    def get_base_characteristics(self, game: 'Game') -> 'CharacteristicsDict':
         """Returns the characteristics directly from the CardData/TokenData."""
         pass
 
@@ -61,4 +74,8 @@ class GameObject(ABC):
     @abstractmethod
     def has_status(self, status: 'StatusType') -> bool:
         """Checks if the object currently has a specific status."""
+        pass
+
+    @abstractmethod
+    def __repr__(self) -> str:
         pass 

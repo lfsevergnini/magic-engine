@@ -151,7 +151,7 @@ class ConcreteGame(Game):
     def _load_card_database(self):
         """Loads card definitions into the database. Hardcoded for now."""
         print("Loading card database...")
-        cards_to_load = [PlainsData(), ForestData()] # Add SavannahLionsData, GrizzlyBearsData later if needed
+        cards_to_load = [PlainsData, ForestData]
         for card_data in cards_to_load:
             self.card_database[card_data.id] = card_data
             print(f"  Loaded: {card_data.name} ({card_data.id})")
