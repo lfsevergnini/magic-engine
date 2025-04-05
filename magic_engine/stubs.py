@@ -108,27 +108,34 @@ class AutoPlayerInputHandler(PlayerInputHandler):
             dist[categories[0]] = total
         return dist
 
+    def choose_action_with_priority(self, legal_actions: List[str], game_state_summary: str) -> str:
+        """Chooses an action automatically for solitaire: Play Land > Tap Land > Pass."""
+        print("(AutoInput) Choosing action with priority...")
+        print(f"(AutoInput) Legal actions: {legal_actions}")
+
+        if "play_land" in legal_actions:
+            print("(AutoInput) Choice: play_land")
+            return "play_land"
+        elif "tap_land" in legal_actions:
+            # Simple logic: Tap land if available and no land play is possible.
+            # A more complex AI might tap mana proactively.
+            print("(AutoInput) Choice: tap_land")
+            return "tap_land"
+        else:
+            print("(AutoInput) Choice: pass")
+            return "pass"
+
     def make_generic_choice(self, options: 'ChoiceOptions', prompt: str) -> 'ChoiceResult':
         """Handles generic choices, including passing priority or playing a land."""
-        print(f"(AutoInput) Making generic choice: {prompt}")
+        # THIS METHOD IS NOW LARGELY OBSOLETE for priority actions,
+        # use choose_action_with_priority instead.
+        # Keep it for other generic choices if needed, or simplify/remove.
+        print(f"(AutoInput) Making generic choice (potentially obsolete): {prompt}")
 
-        # --- Specific Logic for Solitaire Goal ---
-        # Check if we can play a land
-        hand_cards = self.player.get_hand().get_objects(self.game)
-        playable_land = None
-        for card in hand_cards:
-            if self.player.can_play_land(card, self.player.get_hand()):
-                playable_land = card
-                break
-
-        if playable_land:
-            print(f"(AutoInput) Choice: Found playable land {playable_land}, choosing to play it.")
-            # Returning the object signals the game loop to attempt playing it
-            # (Alternative: Call player.play_land directly? Design choice.)
-            return playable_land # Signal intent to play this land
-
-        # --- Default Action: Pass Priority ---
-        print("(AutoInput) Choice: No other actions available, choosing to pass priority.")
-        # How to signal passing priority? Maybe return None or a specific sentinel value.
-        # For now, assume returning None means pass.
-        return None 
+        # --- Default Action: Return first option or None ---
+        print("(AutoInput) Choice: Returning first option or None.")
+        if isinstance(options, list) and options:
+             return options[0]
+        elif isinstance(options, dict) and options:
+             return next(iter(options.values()))
+        return None # Default pass/no choice 

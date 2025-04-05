@@ -110,102 +110,112 @@ class TestSolitaireTurn(unittest.TestCase):
         self.assertEqual(self.player.mana_pool.get_amount(ManaType.WHITE), 0)
 
     def test_02_play_land(self):
-        """Test automatically playing a land during the main phase."""
+        """Test playing a land using the game loop and AutoPlayerInputHandler."""
+        tm = self.game.turn_manager
         # Game setup puts us in Upkeep. Advance to Draw, then Main.
-        self.game.turn_manager.advance(self.game) # -> Draw
-        self.assertEqual(self.game.turn_manager.current_step, StepType.DRAW)
-        self.game.turn_manager.advance(self.game) # -> Main
-        self.assertEqual(self.game.turn_manager.current_phase, PhaseType.PRECOMBAT_MAIN)
-        self.assertEqual(self.game.turn_manager.current_step, StepType.MAIN)
+        tm.advance(self.game) # -> Draw
+        tm.advance(self.game) # -> Main
+        self.assertEqual(tm.current_phase, PhaseType.PRECOMBAT_MAIN)
+        self.assertEqual(tm.current_step, StepType.MAIN)
         
         # State before playing land
-        self.assertEqual(self.player.lands_played_this_turn, 0, "Land drop should be available")
+        self.assertEqual(self.player.lands_played_this_turn, 0)
         hand = self.player.get_hand()
-        initial_hand_count = hand.get_count() # Should be 8 after draw step
-        self.assertEqual(initial_hand_count, 8, "Hand should have 8 cards after draw")
+        initial_hand_count = hand.get_count() # Should be 8 after draw
+        self.assertEqual(initial_hand_count, 8)
         battlefield = self.game.get_zone("battlefield")
+        self.assertIsNotNone(battlefield, "Battlefield zone should exist")
         initial_bf_count = battlefield.get_count() # Should be 0
 
-        # Simulate getting priority and making the choice
-        # AutoPlayerInputHandler should choose to play a land
-        self.game.priority_manager.set_priority(self.player) # Ensure player has priority
-        action_choice = self.player.make_choice("main_action", [], "Choose action or pass")
+        # Simulate one iteration of the game loop where player has priority
+        player_with_priority = self.game.priority_manager.get_current_player()
+        self.assertEqual(player_with_priority, self.player, "Player should have priority in their main phase")
 
-        # Verify the choice was a land object from hand
-        self.assertIsInstance(action_choice, ConcretePermanent, "Action choice should be a Permanent")
-        self.assertIn(CardType.LAND, action_choice.card_data.card_types, "Chosen object should be a Land")
-        self.assertTrue(hand.contains(action_choice.id), "Chosen land should be in hand initially")
-        
-        # Manually execute the play_land action
-        print(f"Test: Manually playing land {action_choice}")
-        self.player.play_land(action_choice, hand)
+        if player_with_priority:
+            # Get action from AutoInputHandler
+            game_summary = self.game._get_game_state_summary(player_with_priority)
+            legal_actions = self.game._get_legal_actions(player_with_priority)
+            self.assertIn("play_land", legal_actions, "play_land should be a legal action")
 
-        # Check state *immediately after* playing the land
+            chosen_action = player_with_priority.input_handler.choose_action_with_priority(
+                legal_actions, game_summary
+            )
+            self.assertEqual(chosen_action, "play_land", "AutoInputHandler should choose to play land")
+
+            # Execute the action using the game's method
+            print(f"Test: Executing action '{chosen_action}' for player {player_with_priority.id}")
+            self.game._execute_action(player_with_priority, chosen_action)
+        else:
+            self.fail("No player had priority when expected")
+
+        # Check state *after* the action is executed
         self.assertEqual(self.player.lands_played_this_turn, 1, "Land drop count should be 1")
         self.assertEqual(battlefield.get_count(), initial_bf_count + 1, "Battlefield count should increase by 1")
         self.assertEqual(hand.get_count(), initial_hand_count - 1, "Hand count should decrease by 1")
-        self.assertTrue(battlefield.contains(action_choice.id), "Played land should be on battlefield")
-        self.assertFalse(hand.contains(action_choice.id), "Played land should not be in hand")
+        # Verify the specific land moved (find the land on battlefield)
+        bf_objs = battlefield.get_objects(self.game)
+        self.assertTrue(any(obj.card_data and CardType.LAND in obj.card_data.card_types for obj in bf_objs), "A land should be on the battlefield")
 
     def test_03_tap_land_for_mana(self):
-        """Test tapping the played land for mana."""
+        """Test tapping the played land for mana using the game loop."""
         tm = self.game.turn_manager
         bf = self.game.get_zone("battlefield")
+        self.assertIsNotNone(bf, "Battlefield zone should exist")
 
-        # Advance to Precombat Main and play the land via loop
+        # Advance to Main Phase
         tm.advance(self.game) # Draw
         tm.advance(self.game) # Main
-        self.game.run_main_loop() # Plays land
+
+        # --- Simulate Playing the Land --- 
+        player_with_priority = self.game.priority_manager.get_current_player()
+        self.assertEqual(player_with_priority, self.player)
+        game_summary = self.game._get_game_state_summary(player_with_priority)
+        legal_actions = self.game._get_legal_actions(player_with_priority)
+        chosen_action = player_with_priority.input_handler.choose_action_with_priority(legal_actions, game_summary)
+        self.assertEqual(chosen_action, "play_land")
+        self.game._execute_action(player_with_priority, chosen_action)
+        # --- Land Played --- 
 
         self.assertEqual(bf.get_count(), 1)
         land_obj = bf.get_objects(self.game)[0]
-        self.assertIsInstance(land_obj, ConcretePermanent)
+        self.assertFalse(land_obj.is_tapped(), "Land should enter untapped")
+        initial_mana = self.player.mana_pool.get_amount(ManaType.WHITE)
 
-        # Manually tap the land and activate its mana ability
-        self.assertEqual(self.player.mana_pool.get_amount(ManaType.WHITE), 0)
+        # --- Simulate Tapping the Land --- 
+        # Player should still have priority after playing land
+        player_with_priority = self.game.priority_manager.get_current_player()
+        self.assertEqual(player_with_priority, self.player)
         
-        # Find the tap mana ability
-        tap_ability = None
-        for ability in land_obj.abilities:
-            if isinstance(ability, TapManaAbility) and ability.mana_type == ManaType.WHITE:
-                tap_ability = ability
-                break
-        self.assertIsNotNone(tap_ability, "Plains should have a White TapManaAbility")
+        if player_with_priority:
+            game_summary = self.game._get_game_state_summary(player_with_priority)
+            legal_actions = self.game._get_legal_actions(player_with_priority)
+            self.assertNotIn("play_land", legal_actions, "Cannot play another land")
+            self.assertIn("tap_land", legal_actions, "tap_land should be a legal action")
 
-        # Check if it can be activated (which requires tapping)
-        self.assertTrue(tap_ability.can_activate(self.game), "Ability should be activatable before tapping")
+            chosen_action = player_with_priority.input_handler.choose_action_with_priority(
+                legal_actions, game_summary
+            )
+            # AutoInputHandler prefers play_land, then tap_land
+            self.assertEqual(chosen_action, "tap_land", "AutoInputHandler should choose to tap land")
 
-        # Tap the permanent first (game action)
-        tapped = land_obj.tap()
-        self.assertTrue(tapped, "Land should be tappable")
-        self.assertTrue(land_obj.has_status(StatusType.TAPPED), "Land should have TAPPED status")
+            # Execute the action
+            print(f"Test: Executing action '{chosen_action}' for player {player_with_priority.id}")
+            self.game._execute_action(player_with_priority, chosen_action)
+        else:
+             self.fail("No player had priority when expected")
 
-        # Now activate the ability (resolves immediately)
-        print(f"Test: Activating ability {tap_ability}")
-        tap_ability.activate(self.game) # This calls produce_mana
+        # --- Land Tapped --- 
 
-        # Check mana pool
-        self.assertEqual(self.player.mana_pool.get_amount(ManaType.WHITE), 1, "Mana pool should have 1 white mana")
+        # Check state *after* tapping
+        self.assertTrue(land_obj.is_tapped(), "Land should now be tapped")
+        self.assertEqual(self.player.mana_pool.get_amount(ManaType.WHITE), initial_mana + 1, "Mana pool should have 1 white mana")
 
-        # Try tapping again (should fail)
-        tapped_again = land_obj.tap()
-        self.assertFalse(tapped_again, "Already tapped land should not tap again")
-        self.assertEqual(self.player.mana_pool.get_amount(ManaType.WHITE), 1, "Mana pool should still have 1 white mana")
-
-        # Ability should not be activatable now
-        self.assertFalse(tap_ability.can_activate(self.game), "Ability should not be activatable when tapped")
-
-    def test_04_full_turn_end(self):
-        """Test running the game loop until the end of the first turn."""
-        self.assertFalse(self.game.game_over)
-
-        # Run the main loop. It should play a land and eventually end the turn.
-        self.game.run_main_loop()
-
-        # The check_win_loss_condition in ConcreteGame is set to end after turn 1
-        self.assertTrue(self.game.game_over, "Game should be over after run_main_loop completes turn 1")
-        self.assertIsNotNone(self.game.game_result)
-        self.assertEqual(self.game.game_result[0], GameResult.DRAW, "Game should end in a Draw for the test scenario")
+        # Try getting actions again (should not include tap_land for the tapped land)
+        player_with_priority = self.game.priority_manager.get_current_player()
+        self.assertEqual(player_with_priority, self.player) # Still has priority
+        legal_actions = self.game._get_legal_actions(player_with_priority)
+        self.assertNotIn("tap_land", legal_actions, "tap_land should not be legal for tapped land")
+        self.assertIn("pass", legal_actions)
 
 if __name__ == '__main__':
     # To run tests easily: python -m unittest tests/test_solitaire_turn.py

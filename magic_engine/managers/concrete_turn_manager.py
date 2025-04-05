@@ -34,8 +34,12 @@ STEP_ORDER = {
 
 class SimpleTurnManager(TurnManager):
     """A basic implementation for turn progression."""
-    def __init__(self, starting_player: 'Player'):
-        self.active_player: 'Player' = starting_player
+    def __init__(self, players: List['Player'], starting_player_index: int = 0):
+        if not players:
+            raise ValueError("SimpleTurnManager requires at least one player.")
+        self.players = players
+        self.active_player_index = starting_player_index
+        self.active_player: 'Player' = self.players[self.active_player_index]
         self.turn_number: int = 0
         # Initialize to before the first turn
         self.current_phase: PhaseType = PhaseType.BEGINNING
@@ -44,10 +48,16 @@ class SimpleTurnManager(TurnManager):
         self._step_index = -1 # Will be incremented to 0 on first advance
 
     def start_turn(self, game: 'Game') -> None:
-        """Actions at the start of a new turn."""
+        """Actions at the start of a new turn, including switching active player."""
+        # Determine next player *before* incrementing turn number if turn > 0
+        if self.turn_number > 0:
+            self.active_player_index = (self.active_player_index + 1) % len(self.players)
+            self.active_player = self.players[self.active_player_index]
+            
         self.turn_number += 1
         print(f"\n===== Starting Turn {self.turn_number} for Player {self.active_player.id} ====")
-        # self.active_player.lands_played_this_turn = 0 # Removed direct reset
+        # Active player state reset is now handled in _perform_untap_step
+
         # Set phase/step indices for the beginning phase
         self._phase_index = PHASE_ORDER.index(PhaseType.BEGINNING)
         self._step_index = -1 # Will advance to Untap next
@@ -130,6 +140,21 @@ class SimpleTurnManager(TurnManager):
     def current_turn_player(self) -> 'Player':
         return self.active_player
 
+    # Re-add set_active_player to satisfy the abstract base class
     def set_active_player(self, player: 'Player') -> None:
-        # Used for game start or effects that change active player
-        self.active_player = player 
+        """Sets the active player. Used for game start or effects that change active player.
+        Updates the internal index if the player is in the manager's list."""
+        self.active_player = player
+        # Update the index if the new player is in our list
+        try:
+            self.active_player_index = self.players.index(player)
+        except ValueError:
+            # Player is not in the list managed by this turn manager
+            # This might happen with control-changing effects temporarily
+            print(f"Warning: Set active player {player.id} who is not in the turn manager's player list.")
+            # Keep the index as is, or set to -1? Let's keep it for now.
+            pass
+
+    # def set_active_player(self, player: 'Player') -> None:
+    #     # Used for game start or effects that change active player
+    #     self.active_player = player 

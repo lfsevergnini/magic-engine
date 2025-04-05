@@ -220,6 +220,13 @@ class ConcretePermanent(Permanent):
             if self.counters[counter_type] == 0:
                 del self.counters[counter_type]
 
+    def enters_battlefield(self, game: 'Game') -> None:
+        """Placeholder implementation for enters_battlefield."""
+        # TODO: Check for ETB triggers based on self.abilities
+        # TODO: Apply static abilities
+        # TODO: Set initial status (e.g., Summoning Sickness for creatures)
+        print(f"[ETB] {self} entered the battlefield.")
+
     # --- Statuses ---
     def set_status(self, status: StatusType, value: bool) -> None:
         if value:

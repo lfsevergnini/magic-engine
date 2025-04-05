@@ -52,6 +52,11 @@ class PlayerInputHandler(ABC):
         """Handles generic choices not covered by other methods."""
         pass
 
+    @abstractmethod
+    def choose_action_with_priority(self, legal_actions: List[str], game_state_summary: str) -> str:
+        """Chooses an action when the player has priority (e.g., 'play_land', 'tap_land', 'cast_spell', 'pass')."""
+        pass
+
     # Add other necessary choice methods:
     # - choose_payment (for costs with options, e.g., hybrid mana)
     # - choose_replacement_effect_order
