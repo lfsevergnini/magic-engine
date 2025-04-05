@@ -58,9 +58,6 @@ class SimpleTurnManager(TurnManager):
         print(f"\n===== Starting Turn {self.turn_number} for Player {self.active_player.id} ====")
         # Active player state reset is now handled in _perform_untap_step
 
-        # Set phase/step indices for the beginning phase
-        self._phase_index = PHASE_ORDER.index(PhaseType.BEGINNING)
-        self._step_index = -1 # Will advance to Untap next
         # Active player gets priority at Upkeep (handled by advance)
 
     def advance(self, game: 'Game') -> None:
@@ -124,8 +121,8 @@ class SimpleTurnManager(TurnManager):
     def _perform_draw_step(self, game: 'Game'):
         print(f"Performing Draw Step for Player {self.active_player.id}")
         # First draw in a turn is a turn-based action
-        if self.turn_number > 0: # Don't draw on the conceptual turn 0 start
-             self.active_player.draw_cards(1)
+        if self.turn_number > 1:
+            self.active_player.draw_cards(1)
 
     def _perform_cleanup_step(self, game: 'Game'):
         print(f"Performing Cleanup Step for Player {self.active_player.id}")
