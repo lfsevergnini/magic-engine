@@ -61,7 +61,15 @@ class SimpleTurnManager(TurnManager):
         # Active player gets priority at Upkeep (handled by advance)
 
     def advance(self, game: 'Game') -> None:
-        """Moves to the next step or phase."""
+        """Moves to the next step or phase, emptying mana pools first."""
+
+        # --- Empty Mana Pools from Previous Step/Phase (Rule 500.4) ---
+        # We do this before processing the *next* step.
+        # The empty() method in ConcreteManaPool handles not printing if already empty.
+        for player in game.players:
+            player.mana_pool.empty()
+
+        # --- Determine Next Step/Phase ---
         current_phase_steps = STEP_ORDER[self.current_phase]
         self._step_index += 1
 
@@ -129,9 +137,6 @@ class SimpleTurnManager(TurnManager):
         # Discard down to max hand size (TODO)
         # Remove "until end of turn" effects (TODO)
         # Remove damage from creatures (TODO)
-        # Empty mana pools
-        for player in game.players:
-            player.mana_pool.empty()
         # Check SBAs and Triggers. If any happen, players get priority and another cleanup step occurs. (TODO)
 
     def current_turn_player(self) -> 'Player':
