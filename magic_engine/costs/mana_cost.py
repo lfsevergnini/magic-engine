@@ -3,15 +3,19 @@ from abc import abstractmethod
 from typing import List, TYPE_CHECKING, Dict
 
 from .base import Cost # Import base class
+from ..enums import ManaType # Import ManaType
 
 if TYPE_CHECKING:
-    from ..enums import ManaSymbol
+    # Remove ManaSymbol import if no longer used directly
+    # from ..enums import ManaSymbol 
     from ..player.player import Player
     from ..game_objects.base import GameObject
 
 class ManaCost(Cost):
     """Represents a specific mana cost component of a larger Cost."""
-    symbols: List['ManaSymbol'] # Define ManaSymbol enum/class properly
+    # Changed symbols to a dict storing counts of each mana type
+    # symbols: List['ManaSymbol'] 
+    cost_dict: Dict[ManaType | str, int] # e.g., {ManaType.WHITE: 1, ManaType.GENERIC: 1}
 
     # ManaCost might need methods for calculating mana value, handling X, etc.
 
@@ -32,46 +36,47 @@ class ManaCost(Cost):
         pass 
 
 class SimpleManaCost(ManaCost):
-    """A basic implementation of ManaCost for simple mana symbols."""
+    """A basic implementation of ManaCost using a dictionary."""
 
-    def __init__(self, symbols: List['ManaSymbol']):
-        # Basic validation/parsing could happen here
-        self.symbols = symbols
+    def __init__(self, generic: int = 0, white: int = 0, blue: int = 0, black: int = 0, red: int = 0, green: int = 0, colorless: int = 0):
+        self.cost_dict = {}
+        if generic > 0: self.cost_dict[ManaType.GENERIC] = generic
+        if white > 0: self.cost_dict[ManaType.WHITE] = white
+        if blue > 0: self.cost_dict[ManaType.BLUE] = blue
+        if black > 0: self.cost_dict[ManaType.BLACK] = black
+        if red > 0: self.cost_dict[ManaType.RED] = red
+        if green > 0: self.cost_dict[ManaType.GREEN] = green
+        if colorless > 0: self.cost_dict[ManaType.COLORLESS] = colorless
+        # TODO: Add X, Phyrexian, Hybrid, Snow etc.
+
+        # Pre-calculate mana value
+        self._mana_value = sum(v for k, v in self.cost_dict.items())
 
     def get_mana_value(self) -> int:
-        """Calculates the mana value. Handles generic and colored symbols.
-           Does not handle X, phyrexian, hybrid yet.
-        """
-        value = 0
-        generic_map: Dict[ManaSymbol, int] = {
-            ManaSymbol.GENERIC_0: 0,
-            ManaSymbol.GENERIC_1: 1,
-            ManaSymbol.GENERIC_2: 2,
-            # ... add more generic symbols as needed
-        }
-        for symbol in self.symbols:
-            if symbol in generic_map:
-                value += generic_map[symbol]
-            elif symbol in [ManaSymbol.W, ManaSymbol.U, ManaSymbol.B, ManaSymbol.R, ManaSymbol.G, ManaSymbol.C, ManaSymbol.SNOW]:
-                value += 1 # Colored, Colorless, Snow symbols count as 1 MV
-            elif symbol == ManaSymbol.X:
-                # Mana value of X is 0 in the cost itself
-                pass
-            # Add logic for hybrid, phyrexian etc. later
-        return value
+        """Returns the pre-calculated mana value."""
+        return self._mana_value
 
     def is_payable(self, player: 'Player', source: 'GameObject') -> bool:
-        # TODO: Implement actual check against player.mana_pool
-        # This is complex due to different mana types and restrictions.
-        # For now, assume it's payable if the check reaches here.
-        print(f"Warning: ManaCost.is_payable for {self.symbols} not fully implemented.")
-        return True # Placeholder
+        """Checks if the player's mana pool can pay this cost."""
+        # Delegates to the player's mana pool
+        return player.mana_pool.can_spend(self)
 
     def pay(self, player: 'Player', source: 'GameObject') -> None:
-        # TODO: Implement actual mana spending from player.mana_pool
-        # This involves choosing which mana to spend if multiple options exist.
-        print(f"Warning: ManaCost.pay for {self.symbols} not fully implemented.")
-        pass # Placeholder
+        """Instructs the player's mana pool to spend mana for this cost."""
+        # Delegates to the player's mana pool
+        success = player.mana_pool.spend(self)
+        if not success:
+            # This should ideally not happen if is_payable was checked first
+            # Raise an error or handle appropriately
+            raise RuntimeError(f"Failed to pay mana cost {self} for {player.id} - pool state might be inconsistent.")
 
     def __repr__(self) -> str:
-        return f"SimpleManaCost({[s.name for s in self.symbols]})" 
+        cost_parts = []
+        if ManaType.GENERIC in self.cost_dict:
+            cost_parts.append(f"{{{self.cost_dict[ManaType.GENERIC]}}}")
+        # Define a consistent order for colored mana
+        color_order = [ManaType.WHITE, ManaType.BLUE, ManaType.BLACK, ManaType.RED, ManaType.GREEN, ManaType.COLORLESS]
+        for color in color_order:
+            if color in self.cost_dict:
+                cost_parts.extend([f"{{{color.name[0]}}}"] * self.cost_dict[color]) # e.g., {W}{W}
+        return f"SimpleManaCost({''.join(cost_parts)})"

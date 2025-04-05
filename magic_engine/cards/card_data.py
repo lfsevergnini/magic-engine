@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import List, Set, Optional, TYPE_CHECKING, Type
 from dataclasses import dataclass, field
 from ..enums import CardType, Color, Rarity, SuperType, SubType
+from ..costs.mana_cost import ManaCost
 
 if TYPE_CHECKING:
     from ..types import CardId
@@ -20,7 +21,7 @@ class CardData:
     name: str
     card_types: Set[CardType]
     colors: Set[Color] # Usually derived from mana cost, can be set explicitly
-    mana_cost: Optional['Cost'] = None
+    mana_cost: Optional[ManaCost] = None
     supertypes: Set[SuperType] = field(default_factory=set)
     subtypes: Set[SubType] = field(default_factory=set)
     rarity: Rarity = Rarity.COMMON
@@ -51,10 +52,9 @@ class CardData:
         permanent_types = {CardType.CREATURE, CardType.ARTIFACT, CardType.ENCHANTMENT, CardType.LAND, CardType.PLANESWALKER}
         return bool(self.card_types.intersection(permanent_types))
 
-    @abstractmethod
     def get_mana_value(self) -> int:
         """Calculates the mana value based on the mana_cost."""
-        pass
+        return self.mana_cost.get_mana_value() if self.mana_cost else 0
 
     # Potentially add helper methods like is_creature(), is_land(), has_subtype(), etc.
     # def is_creature(self) -> bool:

@@ -27,67 +27,85 @@ class ConcreteManaPool(ManaPool):
             # TODO: Handle restricted mana separately
 
         self._pool[mana_type] += amount
-        print(f"Added {amount} {mana_type.name} to pool. Current: {dict(self._pool)}")
+        # Print less verbosely, maybe only on significant changes or if debugging
+        # print(f"Added {amount} {mana_type.name} to pool. Current: {dict(self._pool)}")
 
     def can_spend(self, cost: 'ManaCost') -> bool:
-        """Checks if the mana cost can be paid. Basic implementation."""
-        # TODO: Implement full cost checking (complex!)
-        # Needs to handle generic vs colored, hybrid, phyrexian, snow etc.
-        # and consider restrictions.
-        # For now, just checks if *any* single mana symbol could be paid.
-        if not hasattr(cost, 'symbols'): # Check if it looks like our SimpleManaCost
-             print(f"Warning: can_spend called with non-SimpleManaCost: {cost}")
-             return False # Cannot determine for unknown cost types
+        """Checks if the mana cost can be paid using available mana."""
+        if not hasattr(cost, 'cost_dict'):
+             print(f"Warning: can_spend called with incompatible cost type: {cost}")
+             return False
 
-        # Very basic check: does pool have at least the mana value?
-        total_mana_in_pool = sum(self._pool.values())
-        mana_value = cost.get_mana_value()
-        can_pay = total_mana_in_pool >= mana_value
-        print(f"Pool: {dict(self._pool)}, Cost: {cost}, MV: {mana_value}, Can Pay (basic check): {can_pay}")
-        # This basic check is often WRONG. Needs proper logic.
-        return True # Placeholder - Assume payable for now to progress
+        temp_pool = self._pool.copy() # Use a copy to simulate spending
+        generic_cost = cost.cost_dict.get("generic", 0)
+
+        # Check and simulate spending specific colored/colorless costs first
+        for mana_type, amount in cost.cost_dict.items():
+            if mana_type == "generic":
+                continue # Handle generic cost later
+            if temp_pool.get(mana_type, 0) < amount:
+                return False # Not enough specific mana
+            temp_pool[mana_type] -= amount
+            if temp_pool[mana_type] == 0:
+                del temp_pool[mana_type]
+
+        # Check if remaining mana can cover the generic cost
+        remaining_pool_total = sum(temp_pool.values())
+        if remaining_pool_total < generic_cost:
+            return False # Not enough total mana remaining for generic
+
+        return True
 
     def spend(self, cost: 'ManaCost') -> bool:
-        """Spends mana to pay the cost. Basic implementation."""
-        # TODO: Implement full mana spending logic (complex!)
-        # Needs to handle choices (which colored mana for generic costs?)
-        # Needs to respect restrictions.
-        if not hasattr(cost, 'symbols'):
-            print(f"Warning: spend called with non-SimpleManaCost: {cost}")
+        """Spends mana from the pool to pay the cost. Returns success/failure."""
+        if not hasattr(cost, 'cost_dict'):
+            print(f"Warning: spend called with incompatible cost type: {cost}")
+            return False
+
+        if not self.can_spend(cost): # Double check if payable
+            print(f"Error: Attempted to spend unpayable cost {cost} from pool {self._pool}")
             return False
 
         print(f"Attempting to spend {cost} from pool {dict(self._pool)}")
-        # Basic placeholder: Reduce total mana by mana value.
-        # This is WRONG, but allows simulation to proceed.
-        mana_value_to_spend = cost.get_mana_value()
-        spent_successfully = False
+        # --- Perform the actual spending --- 
         temp_pool = self._pool.copy()
+        generic_to_pay = cost.cost_dict.get("generic", 0)
+        colored_paid_for_generic = 0
 
-        # Prioritize spending colored mana matching the cost
-        # (Not fully implemented in SimpleManaCost yet)
+        # 1. Pay specific colored/colorless costs
+        for mana_type, amount in cost.cost_dict.items():
+            if mana_type == "generic":
+                continue
+            # We already know we have enough due to can_spend check
+            temp_pool[mana_type] -= amount
+            if temp_pool[mana_type] == 0:
+                del temp_pool[mana_type]
 
-        # Spend generic mana (placeholder: just decrement any available mana)
-        mana_types_in_order = [ManaType.COLORLESS, ManaType.WHITE, ManaType.BLUE, ManaType.BLACK, ManaType.RED, ManaType.GREEN]
-        remaining_to_spend = mana_value_to_spend
-
-        for mana_type in mana_types_in_order:
-            spend_amount = min(remaining_to_spend, temp_pool.get(mana_type, 0))
+        # 2. Pay generic cost using remaining mana
+        # Prioritize spending colorless, then colors (order might matter for complex cases)
+        # Simple approach: Iterate through available mana types
+        mana_types_for_generic = [ManaType.COLORLESS, ManaType.WHITE, ManaType.BLUE, ManaType.BLACK, ManaType.RED, ManaType.GREEN]
+        for mana_type in mana_types_for_generic:
+            available = temp_pool.get(mana_type, 0)
+            spend_amount = min(generic_to_pay, available)
             if spend_amount > 0:
                 temp_pool[mana_type] -= spend_amount
-                remaining_to_spend -= spend_amount
+                generic_to_pay -= spend_amount
                 if temp_pool[mana_type] == 0:
                     del temp_pool[mana_type]
-            if remaining_to_spend == 0:
+            if generic_to_pay == 0:
                 break
+        
+        # If generic_to_pay is still > 0 here, something went wrong (should be caught by can_spend)
+        if generic_to_pay > 0:
+             print(f"Error: Internal inconsistency during spending generic cost for {cost}. Remaining generic: {generic_to_pay}")
+             # Don't update the pool, return failure
+             return False
 
-        if remaining_to_spend == 0:
-            self._pool = temp_pool
-            spent_successfully = True
-            print(f"Spent {cost}. Pool after spend: {dict(self._pool)}")
-        else:
-            print(f"Failed to spend {cost}. Not enough mana.")
-
-        return spent_successfully # Placeholder
+        # Commit the changes to the actual pool
+        self._pool = temp_pool
+        print(f"Spent {cost}. Pool after spend: {dict(self._pool)}")
+        return True
 
     def get_amount(self, mana_type: 'ManaType') -> int:
         return self._pool.get(mana_type, 0)

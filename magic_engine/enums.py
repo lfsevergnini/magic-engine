@@ -61,6 +61,7 @@ class ManaType(Enum):
     RED = auto()
     GREEN = auto()
     COLORLESS = auto()
+    GENERIC = auto()
 
 class ManaSymbol(Enum):
     # Represents symbols like {W}, {U}, {B}, {R}, {G}, {C}, {X}, {0}, {1}...,
