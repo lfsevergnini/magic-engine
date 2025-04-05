@@ -109,8 +109,8 @@ class Game(ABC):
 # --- Concrete Implementation ---
 
 # Import concrete components and stubs
+from magic_engine.constants import STARTING_HAND_SIZE
 from .player.concrete_player import ConcretePlayer
-from .player.input_handler import PlayerInputHandler
 from .player.cli_input_handler import CliInputHandler # Import CLI handler
 from .stubs import StubEventBus, StubSbaChecker, StubEffectManager, StubGameState, AutoPlayerInputHandler # Re-import AutoPlayerInputHandler
 from .managers.concrete_turn_manager import SimpleTurnManager
@@ -261,8 +261,8 @@ class ConcreteGame(Game):
 
         # --- Draw Starting Hand ---
         for player in self.players:
-            print(f"Player {player.id} drawing initial hand (7 cards)...")
-            player.draw_cards(7)
+            print(f"Player {player.id} drawing initial hand ({STARTING_HAND_SIZE} cards)...")
+            player.draw_cards(STARTING_HAND_SIZE)
 
         # --- Final Setup ---
         # Set initial player life (already done in Player constructor)
