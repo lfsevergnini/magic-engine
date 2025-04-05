@@ -119,6 +119,8 @@ from .zones.concrete import Battlefield, ConcreteStack
 from .game_objects.base import GameObject # Added runtime import
 from .game_objects.concrete import ConcreteGameObject, ConcretePermanent
 from .card_definitions.basic_lands import PlainsData, ForestData # Example card data
+from .card_definitions.creatures_white import SavannahLionsData # Import Lions
+from .card_definitions.creatures_green import GrizzlyBearsData # Import Bears
 from .enums import GameResult, ZoneType, ManaType, CardType, StepType, PhaseType # Import PhaseType
 import time # For timestamp
 
@@ -126,6 +128,7 @@ from .commands.base import ActionCommand
 from .commands.pass_priority import PassPriorityCommand
 from .commands.play_land import PlayLandCommand
 from .commands.tap_land import TapLandCommand
+from .commands.cast_spell import CastSpellCommand # Import CastSpellCommand
 
 # Import ZoneName constants if available (assuming they exist in enums or constants)
 try:
@@ -171,8 +174,12 @@ class ConcreteGame(Game):
     def _load_card_database(self):
         """Loads card definitions into the database. Hardcoded for now."""
         print("Loading card database...")
-        cards_to_load = [PlainsData, ForestData]
+        # Add creatures to the list of cards to load
+        cards_to_load = [PlainsData, ForestData, SavannahLionsData, GrizzlyBearsData]
         for card_data in cards_to_load:
+            if card_data.id in self.card_database:
+                print(f"  Warning: Card ID '{card_data.id}' already loaded. Skipping duplicate.")
+                continue
             self.card_database[card_data.id] = card_data
             print(f"  Loaded: {card_data.name} ({card_data.id})")
         print(f"Card database loaded with {len(self.card_database)} cards.")
@@ -401,22 +408,65 @@ class ConcreteGame(Game):
             self.game_result = (result, winner)
 
     def resolve_top_stack_object(self) -> None:
-        # TODO: Implement stack resolution
         stack = self.get_stack()
         if not stack.is_empty():
             obj_id = stack.pop() # Assuming pop returns top object ID
             obj = self.get_object(obj_id)
-            print(f"[Game Loop] Resolving {obj.name if obj else 'Unknown Object'} from stack...")
-            # Actual resolution logic goes here
-            # Need to handle moving card to graveyard if it was an Instant/Sorcery
-            # Need to handle putting permanents onto battlefield
-            # Need to execute effects
-            # For now, just print
+            if not obj:
+                print(f"[Game Loop] Error: Object ID {obj_id} not found after popping from stack.")
+                # Decide how to handle this error - skip resolution? Give priority back?
+                # For now, let's give priority back to AP
+                ap = self.turn_manager.current_turn_player()
+                self.priority_manager.set_priority(ap)
+                return
+
+            print(f"[Game Loop] Resolving {obj.card_data.name if obj.card_data else 'Unknown Object'} from stack...")
+
+            # --- Resolution Logic --- 
+            # Determine object type (Permanent spell, Instant, Sorcery, Ability...)
+            is_permanent_spell = (obj.card_data and 
+                                  any(pt in obj.card_data.card_types for pt in [CardType.CREATURE, CardType.ARTIFACT, CardType.ENCHANTMENT, CardType.PLANESWALKER]))
+            is_instant_sorcery = (obj.card_data and 
+                                 any(pt in obj.card_data.card_types for pt in [CardType.INSTANT, CardType.SORCERY]))
+
+            if is_permanent_spell:
+                # It's a permanent spell (like a creature)
+                # Move it from stack to battlefield
+                battlefield = self.get_zone(ZoneId.BATTLEFIELD)
+                battlefield.add(obj.id)
+                obj.zone = battlefield
+                print(f"[Game Loop] {obj.card_data.name} resolved and entered the battlefield.")
+                # Handle ETB effects (if the object is a ConcretePermanent)
+                if isinstance(obj, ConcretePermanent):
+                    obj.enters_battlefield(self) # Trigger ETB
+                # Permanent spells don't usually have effects executed directly on resolution,
+                # unless they have ETB triggered abilities handled by enters_battlefield.
+
+            elif is_instant_sorcery:
+                # It's an Instant or Sorcery
+                print(f"[Game Loop] {obj.card_data.name} resolving (Executing effects - TODO)...")
+                # TODO: Execute the spell's effects using EffectManager
+                # self.effect_manager.execute_effects(obj, self)
+                
+                # Move the card to the graveyard after effects resolve
+                graveyard = obj.owner.get_graveyard() # Find the owner's graveyard
+                graveyard.add(obj.id)
+                obj.zone = graveyard
+                print(f"[Game Loop] {obj.card_data.name} moved to graveyard after resolving.")
+
+            else:
+                 # Handle other types (e.g., abilities on the stack) - TODO
+                 print(f"[Game Loop] Warning: Resolution logic for object type '{type(obj)}' / card types '{obj.card_data.card_types if obj.card_data else []}' not implemented.")
+                 # For now, just remove from stack (effectively fizzle/do nothing)
+                 pass # Object is already removed from stack by pop()
+
+            # --- Post-Resolution --- 
             # After resolution, check SBAs
             self.check_state_based_actions()
             # AP gets priority after resolution
             ap = self.turn_manager.current_turn_player()
             self.priority_manager.set_priority(ap)
+            print(f"[Game Loop] Priority set to Player {ap.id}")
         else:
             print("[Game Loop] Tried to resolve stack, but it was empty.")
 
@@ -495,25 +545,22 @@ class ConcreteGame(Game):
 
         # Check playing a land
         if PlayLandCommand.is_legal(self, player):
-            # We could potentially create specific commands for each land card here,
-            # e.g., PlayLandCommand(land_card_object), but for now, a generic one
-            # that prompts the user inside execute() is simpler.
              actions.append(PlayLandCommand())
 
         # Check tapping lands for mana
         if TapLandCommand.is_legal(self, player):
-            # Similar to playing land, we could generate specific commands per land,
-            # e.g., TapLandCommand(land_permanent_object), but a generic one works.
              actions.append(TapLandCommand())
 
-        # TODO: Add checks for casting spells, activating abilities, etc.
+        # --- Check casting spells --- 
+        # We use the helper can_cast_specific_spell to check each card individually
+        hand = player.get_hand()
+        hand_objects = [self.get_object(oid) for oid in hand.get_object_ids()]
+        for spell_obj in hand_objects:
+            if spell_obj and CastSpellCommand.can_cast_specific_spell(self, player, spell_obj):
+                actions.append(CastSpellCommand(spell_obj))
+
+        # TODO: Add checks for activating abilities, etc.
         # Example:
-        # if CastSpellCommand.is_legal(self, player):
-        #     # Find castable spells in hand and generate commands
-        #     hand_cards = [...]
-        #     for card in hand_cards:
-        #         if CastSpellCommand.can_cast(self, player, card):
-        #             actions.append(CastSpellCommand(card))
         # if ActivateAbilityCommand.is_legal(self, player):
         #     # Find permanents with activatable abilities
         #     permanents = [...]
@@ -521,7 +568,6 @@ class ConcreteGame(Game):
         #         for ability in perm.get_activatable_abilities():
         #              if ability.can_activate(self, player):
         #                   actions.append(ActivateAbilityCommand(ability))
-
 
         return actions
 
