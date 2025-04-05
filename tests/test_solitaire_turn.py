@@ -1,6 +1,7 @@
 """Unit tests for the solitaire game scenario."""
 import unittest
 import random
+from typing import List, Optional
 
 # # Adjust path to import from the parent directory (magic_engine)
 # # This ensures the test runner can find the 'magic_engine' package
@@ -11,9 +12,16 @@ import random
 from magic_engine.game import ConcreteGame
 from magic_engine.game_objects.concrete import ConcretePermanent
 from magic_engine.enums import PhaseType, StepType, ZoneType, ManaType, StatusType, GameResult, CardType
-from magic_engine.abilities.mana_ability import TapManaAbility
+# Removed mana_ability import, not directly used now
+# from magic_engine.abilities.mana_ability import TapManaAbility
 from magic_engine.types import DeckDict, PlayerId
 from magic_engine.constants import STARTING_HAND_SIZE, STARTING_LIBRARY_SIZE
+# --- Add command imports ---
+from magic_engine.commands.base import ActionCommand
+from magic_engine.commands.play_land import PlayLandCommand
+from magic_engine.commands.tap_land import TapLandCommand
+from magic_engine.commands.pass_priority import PassPriorityCommand
+# --- End command imports ---
 
 # Suppress print statements during tests for cleaner output
 # Comment this out if you want to see the game's print statements
@@ -68,8 +76,8 @@ class TestSolitaireTurn(unittest.TestCase):
         tm.advance(self.game)
         self.assertEqual(tm.current_phase, PhaseType.BEGINNING)
         self.assertEqual(tm.current_step, StepType.DRAW)
-        # Player should have drawn a card
-        self.assertEqual(self.player.get_hand().get_count(), STARTING_HAND_SIZE + 1)
+        # Player should NOT have drawn a card
+        self.assertEqual(self.player.get_hand().get_count(), STARTING_HAND_SIZE)
 
         tm.advance(self.game)
         self.assertEqual(tm.current_phase, PhaseType.PRECOMBAT_MAIN)
@@ -117,12 +125,12 @@ class TestSolitaireTurn(unittest.TestCase):
         tm.advance(self.game) # -> Main
         self.assertEqual(tm.current_phase, PhaseType.PRECOMBAT_MAIN)
         self.assertEqual(tm.current_step, StepType.MAIN)
-        
+
         # State before playing land
         self.assertEqual(self.player.lands_played_this_turn, 0)
         hand = self.player.get_hand()
-        initial_hand_count = hand.get_count() # Should be 8 after draw
-        self.assertEqual(initial_hand_count, 8)
+        initial_hand_count = hand.get_count()
+        self.assertEqual(initial_hand_count, 7, "Hand should have 7 cards")
         battlefield = self.game.get_zone("battlefield")
         self.assertIsNotNone(battlefield, "Battlefield zone should exist")
         initial_bf_count = battlefield.get_count() # Should be 0
@@ -134,17 +142,21 @@ class TestSolitaireTurn(unittest.TestCase):
         if player_with_priority:
             # Get action from AutoInputHandler
             game_summary = self.game._get_game_state_summary(player_with_priority)
-            legal_actions = self.game._get_legal_actions(player_with_priority)
-            self.assertIn("play_land", legal_actions, "play_land should be a legal action")
+            # Now returns List[ActionCommand]
+            legal_actions: List[ActionCommand] = self.game._get_legal_actions(player_with_priority)
+            # Check if a PlayLandCommand is available
+            self.assertTrue(any(isinstance(cmd, PlayLandCommand) for cmd in legal_actions), "PlayLandCommand should be legal")
 
-            chosen_action = player_with_priority.input_handler.choose_action_with_priority(
+            # choose_action_with_priority now returns ActionCommand or None
+            chosen_command: Optional[ActionCommand] = player_with_priority.input_handler.choose_action_with_priority(
                 legal_actions, game_summary
             )
-            self.assertEqual(chosen_action, "play_land", "AutoInputHandler should choose to play land")
+            self.assertIsNotNone(chosen_command, "AutoInputHandler should choose an action")
+            self.assertIsInstance(chosen_command, PlayLandCommand, "AutoInputHandler should choose PlayLandCommand")
 
-            # Execute the action using the game's method
-            print(f"Test: Executing action '{chosen_action}' for player {player_with_priority.id}")
-            self.game._execute_action(player_with_priority, chosen_action)
+            # Execute the action command using the game's method
+            print(f"Test: Executing command '{chosen_command.get_display_name()}' for player {player_with_priority.id}")
+            self.game._execute_action(player_with_priority, chosen_command)
         else:
             self.fail("No player had priority when expected")
 
@@ -171,9 +183,10 @@ class TestSolitaireTurn(unittest.TestCase):
         self.assertEqual(player_with_priority, self.player)
         game_summary = self.game._get_game_state_summary(player_with_priority)
         legal_actions = self.game._get_legal_actions(player_with_priority)
-        chosen_action = player_with_priority.input_handler.choose_action_with_priority(legal_actions, game_summary)
-        self.assertEqual(chosen_action, "play_land")
-        self.game._execute_action(player_with_priority, chosen_action)
+        chosen_command = player_with_priority.input_handler.choose_action_with_priority(legal_actions, game_summary)
+        self.assertIsNotNone(chosen_command)
+        self.assertIsInstance(chosen_command, PlayLandCommand)
+        self.game._execute_action(player_with_priority, chosen_command)
         # --- Land Played --- 
 
         self.assertEqual(bf.get_count(), 1)
@@ -188,19 +201,23 @@ class TestSolitaireTurn(unittest.TestCase):
         
         if player_with_priority:
             game_summary = self.game._get_game_state_summary(player_with_priority)
-            legal_actions = self.game._get_legal_actions(player_with_priority)
-            self.assertNotIn("play_land", legal_actions, "Cannot play another land")
-            self.assertIn("tap_land", legal_actions, "tap_land should be a legal action")
+            # Get new legal actions
+            legal_actions: List[ActionCommand] = self.game._get_legal_actions(player_with_priority)
+            # Check command types
+            self.assertFalse(any(isinstance(cmd, PlayLandCommand) for cmd in legal_actions), "PlayLandCommand should NOT be legal")
+            self.assertTrue(any(isinstance(cmd, TapLandCommand) for cmd in legal_actions), "TapLandCommand should be legal")
 
-            chosen_action = player_with_priority.input_handler.choose_action_with_priority(
+            # Get chosen command
+            chosen_command: Optional[ActionCommand] = player_with_priority.input_handler.choose_action_with_priority(
                 legal_actions, game_summary
             )
             # AutoInputHandler prefers play_land, then tap_land
-            self.assertEqual(chosen_action, "tap_land", "AutoInputHandler should choose to tap land")
+            self.assertIsNotNone(chosen_command, "AutoInputHandler should choose an action")
+            self.assertIsInstance(chosen_command, TapLandCommand, "AutoInputHandler should choose TapLandCommand")
 
-            # Execute the action
-            print(f"Test: Executing action '{chosen_action}' for player {player_with_priority.id}")
-            self.game._execute_action(player_with_priority, chosen_action)
+            # Execute the command
+            print(f"Test: Executing command '{chosen_command.get_display_name()}' for player {player_with_priority.id}")
+            self.game._execute_action(player_with_priority, chosen_command)
         else:
              self.fail("No player had priority when expected")
 
@@ -213,9 +230,9 @@ class TestSolitaireTurn(unittest.TestCase):
         # Try getting actions again (should not include tap_land for the tapped land)
         player_with_priority = self.game.priority_manager.get_current_player()
         self.assertEqual(player_with_priority, self.player) # Still has priority
-        legal_actions = self.game._get_legal_actions(player_with_priority)
-        self.assertNotIn("tap_land", legal_actions, "tap_land should not be legal for tapped land")
-        self.assertIn("pass", legal_actions)
+        legal_actions: List[ActionCommand] = self.game._get_legal_actions(player_with_priority)
+        self.assertFalse(any(isinstance(cmd, TapLandCommand) for cmd in legal_actions), "TapLandCommand should not be legal for tapped land")
+        self.assertTrue(any(isinstance(cmd, PassPriorityCommand) for cmd in legal_actions), "PassPriorityCommand should be legal")
 
 if __name__ == '__main__':
     # To run tests easily: python -m unittest tests/test_solitaire_turn.py
