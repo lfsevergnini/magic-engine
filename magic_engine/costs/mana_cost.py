@@ -24,16 +24,14 @@ class ManaCost(Cost):
         """Calculates the mana value (converted mana cost) of this cost."""
         pass
 
-    # Override base methods if specific mana logic is needed
+    # Use the signature from the base Cost class
     @abstractmethod
-    def is_payable(self, player: 'Player', source: 'GameObject') -> bool:
-        # Implementation likely involves checking player.mana_pool
+    def can_pay(self, player: 'Player', game: 'Game') -> bool:
         pass
 
     @abstractmethod
-    def pay(self, player: 'Player', source: 'GameObject') -> None:
-        # Implementation likely involves calling player.mana_pool.spend
-        pass 
+    def pay(self, player: 'Player', game: 'Game') -> None:
+        pass
 
 class SimpleManaCost(ManaCost):
     """A basic implementation of ManaCost using a dictionary."""
@@ -56,18 +54,18 @@ class SimpleManaCost(ManaCost):
         """Returns the pre-calculated mana value."""
         return self._mana_value
 
-    def is_payable(self, player: 'Player', source: 'GameObject') -> bool:
+    # Match the base Cost signature
+    def can_pay(self, player: 'Player', game: 'Game') -> bool:
         """Checks if the player's mana pool can pay this cost."""
-        # Delegates to the player's mana pool
+        # Game parameter is not strictly needed here, but matches base class
         return player.mana_pool.can_spend(self)
 
-    def pay(self, player: 'Player', source: 'GameObject') -> None:
+    # Match the base Cost signature
+    def pay(self, player: 'Player', game: 'Game') -> None:
         """Instructs the player's mana pool to spend mana for this cost."""
-        # Delegates to the player's mana pool
+        # Game parameter is not strictly needed here
         success = player.mana_pool.spend(self)
         if not success:
-            # This should ideally not happen if is_payable was checked first
-            # Raise an error or handle appropriately
             raise RuntimeError(f"Failed to pay mana cost {self} for {player.id} - pool state might be inconsistent.")
 
     def __repr__(self) -> str:
