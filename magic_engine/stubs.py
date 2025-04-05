@@ -9,11 +9,22 @@ from .managers.effect_manager import EffectManager
 from .effects.continuous import ContinuousEffect, ReplacementEffect, PreventionEffect
 from .state.game_state import GameState
 from .player.input_handler import PlayerInputHandler
+# --- Moved Command imports to TYPE_CHECKING block for cleaner structure --- 
+from .commands.base import ActionCommand
+from .commands.pass_priority import PassPriorityCommand
+from .commands.play_land import PlayLandCommand
+from .commands.tap_land import TapLandCommand
 
 if TYPE_CHECKING:
     from .game import Game
+    from .player.player import Player # Player import
     from .game_objects.base import GameObject
+    from .game_objects.permanent import Permanent # Permanent import
     from .types import Targetable, CharacteristicsDict, ModeSelection, ChoiceOptions, ChoiceResult, ObjectId
+    from .commands.base import ActionCommand # Command imports
+    from .commands.pass_priority import PassPriorityCommand
+    from .commands.play_land import PlayLandCommand
+    from .commands.tap_land import TapLandCommand
     # Define placeholders
     class Mode: pass
 
@@ -108,22 +119,29 @@ class AutoPlayerInputHandler(PlayerInputHandler):
             dist[categories[0]] = total
         return dist
 
-    def choose_action_with_priority(self, legal_actions: List[str], game_state_summary: str) -> str:
-        """Chooses an action automatically for solitaire: Play Land > Tap Land > Pass."""
+    def choose_action_with_priority(self, legal_actions: List[ActionCommand], game_state_summary: str) -> Optional[ActionCommand]:
+        """Chooses an action command automatically: Play Land > Tap Land > Pass."""
         print("(AutoInput) Choosing action with priority...")
-        print(f"(AutoInput) Legal actions: {legal_actions}")
+        # print(f"(AutoInput) Legal actions: {[cmd.get_display_name() for cmd in legal_actions]}")
 
-        if "play_land" in legal_actions:
-            print("(AutoInput) Choice: play_land")
-            return "play_land"
-        elif "tap_land" in legal_actions:
-            # Simple logic: Tap land if available and no land play is possible.
-            # A more complex AI might tap mana proactively.
-            print("(AutoInput) Choice: tap_land")
-            return "tap_land"
+        # Prioritize actions using isinstance checks on the command objects
+        play_land_command = next((cmd for cmd in legal_actions if isinstance(cmd, PlayLandCommand)), None)
+        tap_land_command = next((cmd for cmd in legal_actions if isinstance(cmd, TapLandCommand)), None)
+        pass_command = next((cmd for cmd in legal_actions if isinstance(cmd, PassPriorityCommand)), None)
+
+        if play_land_command:
+            print("(AutoInput) Choice: Play Land")
+            return play_land_command
+        elif tap_land_command:
+            print("(AutoInput) Choice: Tap Land")
+            return tap_land_command
+        elif pass_command:
+            print("(AutoInput) Choice: Pass Priority")
+            return pass_command
         else:
-            print("(AutoInput) Choice: pass")
-            return "pass"
+            # Should not happen if PassPriority is always legal when player has priority
+            print("(AutoInput) Warning: No legal action found, including Pass. Returning None.")
+            return None
 
     def make_generic_choice(self, options: 'ChoiceOptions', prompt: str) -> 'ChoiceResult':
         """Handles generic choices, including passing priority or playing a land."""

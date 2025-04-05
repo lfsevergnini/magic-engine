@@ -2,6 +2,7 @@
 from typing import List, Any, TYPE_CHECKING, Dict, Optional, Callable
 
 from .input_handler import PlayerInputHandler
+from ..commands.base import ActionCommand
 
 if TYPE_CHECKING:
     # Use forward references (strings) or TYPE_CHECKING block
@@ -9,7 +10,8 @@ if TYPE_CHECKING:
     from ..game_objects.base import GameObject
     from ..player.player import Player
     from ..game import Game
-    from ..game_objects.permanent import Permanent # Import Permanent
+    from ..game_objects.permanent import Permanent
+    from ..commands.base import ActionCommand
     # from ..cards import Mode # Define Mode properly later
     class Mode:
         pass
@@ -75,12 +77,19 @@ class CliInputHandler(PlayerInputHandler):
              return f"{name} ({status})"
         return self._choose_item_from_list(permanents, "permanents", prompt, display_func=display_perm)
 
-    def choose_action_with_priority(self, legal_actions: List[str], game_state_summary: str) -> str:
-        """Asks the player to choose an action when they have priority."""
+    def choose_action_with_priority(self, legal_actions: List[ActionCommand], game_state_summary: str) -> Optional[ActionCommand]:
+        """Asks the player to choose an action (command object) when they have priority."""
         prompt = f"You have priority. Current State:\n{game_state_summary}\nAvailable Actions:"
         
+        # Extract display names for the prompt
+        action_display_names = [cmd.get_display_name() for cmd in legal_actions]
+
         while True:
-            choice_str = self._display_prompt(prompt, legal_actions)
+            choice_str = self._display_prompt(prompt, action_display_names)
+            if not choice_str: # Handle empty input or potential EOF cases
+                print("No input received. Please choose an action.")
+                continue # Or return None / default pass command?
+
             try:
                 # Try interpreting as a number (1-based index)
                 choice_idx = int(choice_str) - 1
@@ -89,16 +98,27 @@ class CliInputHandler(PlayerInputHandler):
                 else:
                     print("Invalid number. Please choose from the list.")
             except ValueError:
-                # Try interpreting as the action string itself (case-insensitive)
+                # Try interpreting as the action display name itself (case-insensitive)
                 choice_lower = choice_str.lower()
-                matching_actions = [action for action in legal_actions if action.lower() == choice_lower]
+                matching_actions = [
+                    cmd for cmd in legal_actions
+                    if cmd.get_display_name().lower() == choice_lower
+                ]
                 if len(matching_actions) == 1:
                     return matching_actions[0]
                 elif len(matching_actions) > 1:
-                     # This shouldn't happen with distinct actions, but handle just in case
-                     print("Ambiguous input. Please be more specific or use the number.")
+                     # This could happen if multiple commands have the same display name
+                     # (e.g., "Activate Ability" if we don't specify which one)
+                     # We might need a more robust selection mechanism later.
+                     print(f"Ambiguous input '{choice_str}'. Please use the number.")
                 else:
                      print(f"Invalid action '{choice_str}'. Please choose from the list or enter the corresponding number.")
+
+            # Add a way to explicitly quit or indicate no choice
+            if choice_str.lower() in ['quit', 'exit']: # Example quit command
+                 print("Exiting game.")
+                 # Perhaps return a special value or raise an exception
+                 return None # Indicates user wants to quit or made no choice
 
     # --- Stub Implementations for other choices ---
 

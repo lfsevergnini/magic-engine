@@ -122,6 +122,11 @@ from .card_definitions.basic_lands import PlainsData, ForestData # Example card 
 from .enums import GameResult, ZoneType, ManaType, CardType, StepType, PhaseType # Import PhaseType
 import time # For timestamp
 
+from .commands.base import ActionCommand
+from .commands.pass_priority import PassPriorityCommand
+from .commands.play_land import PlayLandCommand
+from .commands.tap_land import TapLandCommand
+
 # Import ZoneName constants if available (assuming they exist in enums or constants)
 try:
     from .constants import ZoneId # Or from .enums import ZoneId
@@ -480,121 +485,51 @@ class ConcreteGame(Game):
 
         return "\n".join(lines)
 
-    def _get_legal_actions(self, player: 'Player') -> List[str]:
-        """Determines the legal actions a player can take based on game state."""
-        actions = []
-        actions.append("pass")
+    def _get_legal_actions(self, player: 'Player') -> List[ActionCommand]:
+        """Determines the legal actions (as command objects) a player can take."""
+        actions: List[ActionCommand] = []
 
-        # Check if playing a land is possible
-        is_main_phase = self.turn_manager.current_phase in [PhaseType.PRECOMBAT_MAIN, PhaseType.POSTCOMBAT_MAIN]
-        is_turn_player = player == self.turn_manager.current_turn_player()
-        stack_is_empty = self.get_stack().is_empty()
-        can_play_land = (is_turn_player and
-                         is_main_phase and
-                         stack_is_empty and
-                         player.lands_played_this_turn < 1)
-        if can_play_land:
-            hand = player.get_hand()
-            hand_objects = [self.get_object(oid) for oid in hand.get_object_ids()]
-            if any(obj and obj.card_data and CardType.LAND in obj.card_data.card_types for obj in hand_objects):
-                 actions.append("play_land")
+        # Always possible to pass when holding priority
+        if PassPriorityCommand.is_legal(self, player):
+            actions.append(PassPriorityCommand())
 
-        # Check if tapping a land for mana is possible (as a mana ability)
-        battlefield = self.get_zone(ZoneId.BATTLEFIELD)
-        my_perms = [p for p in battlefield.get_objects(self) if p.controller == player]
-        if any(p.card_data and CardType.LAND in p.card_data.card_types and not p.is_tapped() for p in my_perms):
-             actions.append("tap_land")
+        # Check playing a land
+        if PlayLandCommand.is_legal(self, player):
+            # We could potentially create specific commands for each land card here,
+            # e.g., PlayLandCommand(land_card_object), but for now, a generic one
+            # that prompts the user inside execute() is simpler.
+             actions.append(PlayLandCommand())
+
+        # Check tapping lands for mana
+        if TapLandCommand.is_legal(self, player):
+            # Similar to playing land, we could generate specific commands per land,
+            # e.g., TapLandCommand(land_permanent_object), but a generic one works.
+             actions.append(TapLandCommand())
+
+        # TODO: Add checks for casting spells, activating abilities, etc.
+        # Example:
+        # if CastSpellCommand.is_legal(self, player):
+        #     # Find castable spells in hand and generate commands
+        #     hand_cards = [...]
+        #     for card in hand_cards:
+        #         if CastSpellCommand.can_cast(self, player, card):
+        #             actions.append(CastSpellCommand(card))
+        # if ActivateAbilityCommand.is_legal(self, player):
+        #     # Find permanents with activatable abilities
+        #     permanents = [...]
+        #     for perm in permanents:
+        #         for ability in perm.get_activatable_abilities():
+        #              if ability.can_activate(self, player):
+        #                   actions.append(ActivateAbilityCommand(ability))
+
 
         return actions
 
-    def _execute_action(self, player: 'Player', action: str) -> None:
-        """Executes the chosen action."""
-        print(f"[Game Loop] Player {player.id} chose action: {action}")
-        if action == "pass":
-            self.priority_manager.pass_priority(player, self)
-        elif action == "play_land":
-            self._execute_play_land(player)
-        elif action == "tap_land":
-             self._execute_tap_land(player)
-        else:
-            print(f"[Game Loop] Warning: Unknown action '{action}' chosen.")
-            self.priority_manager.pass_priority(player, self)
-
-    def _execute_play_land(self, player: 'Player'):
-         """Handles the process of playing a land."""
-         hand = player.get_hand()
-         hand_objs = [self.get_object(oid) for oid in hand.get_object_ids()]
-         land_cards_in_hand = [obj for obj in hand_objs if obj and obj.card_data and CardType.LAND in obj.card_data.card_types]
-
-         if not land_cards_in_hand:
-             # This state shouldn't be reachable if _get_legal_actions is correct
-             print("[Action] Error: play_land chosen but no land cards found in hand.")
-             return
-
-         chosen_land_obj = player.input_handler.choose_card_from_list(
-             land_cards_in_hand, "Choose a land to play:"
-         )
-
-         if not chosen_land_obj:
-             print("[Action] No land chosen to play.")
-             self.priority_manager.pass_priority(player, self)
-             return
-
-         print(f"[Action] Playing {chosen_land_obj.card_data.name} from hand.")
-         hand.remove(chosen_land_obj.id)
-         battlefield = self.get_zone(ZoneId.BATTLEFIELD)
-         battlefield.add(chosen_land_obj.id)
-         chosen_land_obj.zone = battlefield
-         chosen_land_obj.controller = player
-         if isinstance(chosen_land_obj, ConcretePermanent):
-             chosen_land_obj.enters_battlefield(self)
-
-         player.lands_played_this_turn += 1
-         print(f"[Action] {chosen_land_obj.card_data.name} entered the battlefield.")
-         self.priority_manager.set_priority(player) # Player retains priority after playing land
-         self.check_state_based_actions()
-
-    def _execute_tap_land(self, player: 'Player'):
-         """Handles the process of tapping a land for mana."""
-         battlefield = self.get_zone(ZoneId.BATTLEFIELD)
-         controlled_perms = [p for p in battlefield.get_objects(self) if p.controller == player]
-         untapped_lands = [p for p in controlled_perms if p.card_data and CardType.LAND in p.card_data.card_types and not p.is_tapped()]
-
-         if not untapped_lands:
-             # This state shouldn't be reachable if _get_legal_actions is correct
-             print("[Action] Error: tap_land chosen but no untapped lands found.")
-             return
-
-         chosen_land_perm = player.input_handler.choose_permanent_from_list(
-             untapped_lands, "Choose an untapped land to tap for mana:"
-         )
-
-         if not chosen_land_perm:
-             print("[Action] No land chosen to tap.")
-             self.priority_manager.pass_priority(player, self)
-             return
-
-         print(f"[Action] Tapping {chosen_land_perm.card_data.name} for mana.")
-         if hasattr(chosen_land_perm, 'tap'):
-            chosen_land_perm.tap()
-         else:
-            print(f"Warning: Cannot tap object {chosen_land_perm} as it lacks a 'tap' method.")
-            return
-
-         mana_produced: Optional[ManaType] = None
-         if chosen_land_perm.card_data.name == "Plains":
-             mana_produced = ManaType.WHITE
-         elif chosen_land_perm.card_data.name == "Forest":
-             mana_produced = ManaType.GREEN
-
-         if mana_produced:
-             player.mana_pool.add(mana_produced, 1)
-             print(f"[Action] Added {{ {mana_produced.name}: 1 }} to Player {player.id}'s mana pool. Current: {player.mana_pool}")
-         else:
-             print(f"[Action] Warning: Don't know what mana {chosen_land_perm.card_data.name} produces.")
-
-         self.priority_manager.set_priority(player) # Player retains priority after mana ability
-         self.check_state_based_actions()
+    def _execute_action(self, player: 'Player', command: ActionCommand) -> None:
+        """Executes the chosen ActionCommand."""
+        print(f"[Game Loop] Player {player.id} chose action: {command.get_display_name()}")
+        # The command object itself now handles the execution logic
+        command.execute(self, player)
 
     def run_main_loop(self) -> None:
         """Contains the core game loop: turn progression, priority passing, SBA checks, stack resolution."""
@@ -616,15 +551,21 @@ class ConcreteGame(Game):
             if player_with_priority:
                 # Player has priority, get their action
                 game_summary = self._get_game_state_summary(player_with_priority)
-                legal_actions = self._get_legal_actions(player_with_priority)
+                # Now gets a list of ActionCommand objects
+                legal_actions: List[ActionCommand] = self._get_legal_actions(player_with_priority)
 
-                # Use the player's input handler
-                chosen_action = player_with_priority.input_handler.choose_action_with_priority(
+                # Use the player's input handler - IT MUST NOW HANDLE ActionCommand objects
+                chosen_command: Optional[ActionCommand] = player_with_priority.input_handler.choose_action_with_priority(
                     legal_actions, game_summary
                 )
 
-                # Execute the action
-                self._execute_action(player_with_priority, chosen_action)
+                # Execute the action command object
+                if chosen_command:
+                    self._execute_action(player_with_priority, chosen_command)
+                else:
+                    # Handle cases where input handler returns None (e.g., user quits)
+                    print("[Game Loop] No action chosen. Passing priority by default.")
+                    PassPriorityCommand().execute(self, player_with_priority) # Default to pass
 
             else:
                 # No player has priority, check if stack resolves or turn advances
