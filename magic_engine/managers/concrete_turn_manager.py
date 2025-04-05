@@ -3,11 +3,11 @@ from typing import TYPE_CHECKING, List
 
 from .turn_manager import TurnManager
 from ..enums import PhaseType, StepType
+from ..game_objects.concrete import ConcretePermanent
 
 if TYPE_CHECKING:
     from ..player.player import Player
     from ..game import Game
-    from ..game_objects.concrete import ConcretePermanent # For untap
 
 # Define the order of phases and steps
 PHASE_ORDER = [

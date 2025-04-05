@@ -83,7 +83,10 @@ class TwoPlayerPriorityManager(PriorityManager):
              self._player_with_priority = None
         else:
              # Otherwise, pass priority to the other player
-             self.set_priority(other_player) # set_priority clears the pass list implicitly
+             # Directly set the next player with priority *without* clearing the pass list.
+             # set_priority (which clears the list) is only called after actions or turn progression.
+             self._player_with_priority = other_player
+             print(f"[Priority] Priority passed to Player {other_player.id}")
 
     def set_priority(self, player: Optional['Player']) -> None:
         """Gives priority to the specified player and resets pass tracking."""
