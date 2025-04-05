@@ -138,4 +138,26 @@ class AutoPlayerInputHandler(PlayerInputHandler):
              return options[0]
         elif isinstance(options, dict) and options:
              return next(iter(options.values()))
-        return None # Default pass/no choice 
+        return None # Default pass/no choice
+
+    # Add implementations for the list choice methods needed by game logic
+    def choose_card_from_list(self, cards: List['GameObject'], prompt: str) -> Optional['GameObject']:
+        """Auto-selects the first card from the list."""
+        print(f"(AutoInput) Choosing card: {prompt} - Selecting first.")
+        if cards:
+            print(f"(AutoInput) Selected: {cards[0].card_data.name if cards[0] and cards[0].card_data else 'Unknown'}")
+            return cards[0]
+        print("(AutoInput) No cards to choose from.")
+        return None
+
+    def choose_permanent_from_list(self, permanents: List['Permanent'], prompt: str) -> Optional['Permanent']:
+        """Auto-selects the first permanent from the list."""
+        print(f"(AutoInput) Choosing permanent: {prompt} - Selecting first.")
+        if permanents:
+            print(f"(AutoInput) Selected: {permanents[0].card_data.name if permanents[0] and permanents[0].card_data else 'Unknown'}")
+            return permanents[0]
+        print("(AutoInput) No permanents to choose from.")
+        return None
+
+    # Add other necessary choice methods:
+    # ... [as before] ... 
