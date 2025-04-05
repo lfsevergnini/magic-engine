@@ -1,5 +1,5 @@
 """Command Line Interface (CLI) input handler for player decisions."""
-from typing import List, Any, TYPE_CHECKING, Dict, Optional
+from typing import List, Any, TYPE_CHECKING, Dict, Optional, Callable
 
 from .input_handler import PlayerInputHandler
 
@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from ..game_objects.base import GameObject
     from ..player.player import Player
     from ..game import Game
+    from ..game_objects.permanent import Permanent # Import Permanent
     # from ..cards import Mode # Define Mode properly later
     class Mode:
         pass
@@ -37,6 +38,42 @@ class CliInputHandler(PlayerInputHandler):
             except Exception as e:
                  print(f"An error occurred: {e}")
 
+    def _choose_item_from_list(self, items: List[Any], item_type_name: str, prompt: str, display_func: Optional[Callable[[Any], str]] = None) -> Optional[Any]:
+        """Generic helper to choose an item from a numbered list via CLI."""
+        if not items:
+            print(f"No {item_type_name} available to choose.")
+            return None
+
+        print(prompt)
+        if display_func:
+            options = [display_func(item) for item in items]
+        else:
+            options = [str(item) for item in items]
+            
+        while True:
+            choice_str = self._display_prompt("Choose number:", options)
+            try:
+                choice_idx = int(choice_str) - 1
+                if 0 <= choice_idx < len(items):
+                    return items[choice_idx]
+                else:
+                    print(f"Invalid number. Please choose between 1 and {len(items)}.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+
+    def choose_card_from_list(self, cards: List['GameObject'], prompt: str) -> Optional['GameObject']:
+        """Asks the player to choose a card object from a list."""
+        def display_card(card):
+            return card.card_data.name if card and card.card_data else "Unknown Card"
+        return self._choose_item_from_list(cards, "cards", prompt, display_func=display_card)
+
+    def choose_permanent_from_list(self, permanents: List['Permanent'], prompt: str) -> Optional['Permanent']:
+        """Asks the player to choose a permanent object from a list."""
+        def display_perm(perm):
+             name = perm.card_data.name if perm and perm.card_data else "Unknown Permanent"
+             status = "Tapped" if perm.is_tapped() else "Untapped"
+             return f"{name} ({status})"
+        return self._choose_item_from_list(permanents, "permanents", prompt, display_func=display_perm)
 
     def choose_action_with_priority(self, legal_actions: List[str], game_state_summary: str) -> str:
         """Asks the player to choose an action when they have priority."""

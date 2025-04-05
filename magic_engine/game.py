@@ -424,60 +424,87 @@ class ConcreteGame(Game):
         return actions_performed
 
     def _get_game_state_summary(self, player: 'Player') -> str:
-        """Generates a simple string summary of the game state for a player."""
-        # TODO: Improve this summary significantly
-        summary = []
-        summary.append(f"Turn: {self.turn_manager.turn_number}, Phase: {self.turn_manager.current_phase.name}, Step: {self.turn_manager.current_step.name}")
-        summary.append(f"Active Player: {self.turn_manager.current_turn_player().id}")
-        summary.append(f"Priority Player: {self.priority_manager.get_current_player().id if self.priority_manager.get_current_player() else 'None'}")
-        summary.append("\n--- Your State ---")
-        summary.append(f"Life: {player.life}")
-        summary.append(f"Mana Pool: {player.mana_pool}") # Assumes ManaPool has __str__
-        hand = player.get_hand()
-        # Access name via card_data
-        hand_cards = [self.get_object(obj_id).card_data.name 
-                      for obj_id in hand.get_object_ids() 
-                      if self.get_object(obj_id) and self.get_object(obj_id).card_data]
-        summary.append(f"Hand ({hand.get_count()}): {', '.join(hand_cards) if hand_cards else 'Empty'}")
+        """Generates a string summary of the game state for the CLI, tailored to the given player."""
+        opponent = next((p for p in self.players if p != player), None)
+        active_player = self.turn_manager.current_turn_player()
+        priority_player = self.priority_manager.get_current_player()
         battlefield = self.get_zone(ZoneId.BATTLEFIELD)
+
+        lines = []
+        lines.append("=" * 40)
+        lines.append(f" Turn {self.turn_manager.turn_number} | {self.turn_manager.current_phase.name} Phase | {self.turn_manager.current_step.name} Step ")
+        lines.append(f" Active Player: {active_player.id} {'(You)' if active_player == player else ''} ")
+        lines.append(f" Priority: {priority_player.id if priority_player else 'None'} {'(You)' if priority_player == player else ''} ")
+        lines.append("-" * 40)
+
+        # Opponent Info
+        if opponent:
+            lines.append(f" Opponent (Player {opponent.id}):")
+            lines.append(f"   Life: {opponent.life}")
+            opponent_hand_count = opponent.get_hand().get_count()
+            lines.append(f"   Hand: {opponent_hand_count} card(s)")
+            opponent_library_count = opponent.get_library().get_count()
+            lines.append(f"   Library: {opponent_library_count} card(s)")
+            opp_perms = [p for p in battlefield.get_objects(self) if p.controller == opponent]
+            opp_perms_str = [f"  {p.card_data.name} ({'Tapped' if p.is_tapped() else 'Untapped'})" 
+                             for p in opp_perms if p.card_data]
+            lines.append("   Battlefield:")
+            if opp_perms_str:
+                lines.extend(opp_perms_str)
+            else:
+                lines.append("     (Empty)")
+            lines.append(f"   Mana Pool: {opponent.mana_pool}") # Display opponent mana
+            lines.append("-" * 40)
+
+        # Your Info
+        lines.append(f" You (Player {player.id}):")
+        lines.append(f"   Life: {player.life}")
+        hand = player.get_hand()
+        hand_cards = [f"{i+1}: {self.get_object(obj_id).card_data.name}" 
+                      for i, obj_id in enumerate(hand.get_object_ids()) 
+                      if self.get_object(obj_id) and self.get_object(obj_id).card_data]
+        lines.append(f"   Hand ({hand.get_count()}): {', '.join(hand_cards) if hand_cards else '(Empty)'}")
+        library_count = player.get_library().get_count()
+        lines.append(f"   Library: {library_count} card(s)")
         my_perms = [p for p in battlefield.get_objects(self) if p.controller == player]
-        # Access name via card_data here too
-        my_perms_str = [f"{p.card_data.name} ({'Tapped' if p.is_tapped() else 'Untapped'})" 
-                        for p in my_perms if p.card_data]
-        summary.append(f"Battlefield: {', '.join(my_perms_str) if my_perms_str else 'Empty'}")
-        # Add opponent info later
-        return "\n".join(summary)
+        # Include index for selection later
+        my_perms_str = [f"  {i+1}: {p.card_data.name} ({'Tapped' if p.is_tapped() else 'Untapped'})" 
+                        for i, p in enumerate(my_perms) if p.card_data]
+        lines.append("   Battlefield:")
+        if my_perms_str:
+            lines.extend(my_perms_str)
+        else:
+            lines.append("     (Empty)")
+        lines.append(f"   Mana Pool: {player.mana_pool}")
+        lines.append("=" * 40)
+
+        return "\n".join(lines)
 
     def _get_legal_actions(self, player: 'Player') -> List[str]:
         """Determines the legal actions a player can take based on game state."""
         actions = []
-        # Always possible to pass priority
         actions.append("pass")
 
         # Check if playing a land is possible
         is_main_phase = self.turn_manager.current_phase in [PhaseType.PRECOMBAT_MAIN, PhaseType.POSTCOMBAT_MAIN]
         is_turn_player = player == self.turn_manager.current_turn_player()
         stack_is_empty = self.get_stack().is_empty()
-        can_play_land = (is_turn_player and 
-                         is_main_phase and 
-                         stack_is_empty and 
+        can_play_land = (is_turn_player and
+                         is_main_phase and
+                         stack_is_empty and
                          player.lands_played_this_turn < 1)
         if can_play_land:
-            # Check if player has any lands in hand
             hand = player.get_hand()
             hand_objects = [self.get_object(oid) for oid in hand.get_object_ids()]
-            # Access card_types via card_data
             if any(obj and obj.card_data and CardType.LAND in obj.card_data.card_types for obj in hand_objects):
                  actions.append("play_land")
 
         # Check if tapping a land for mana is possible (as a mana ability)
         battlefield = self.get_zone(ZoneId.BATTLEFIELD)
         my_perms = [p for p in battlefield.get_objects(self) if p.controller == player]
-        # Access card_types via card_data
         if any(p.card_data and CardType.LAND in p.card_data.card_types and not p.is_tapped() for p in my_perms):
              actions.append("tap_land")
 
-        # Add other actions like casting spells, activating abilities later
         return actions
 
     def _execute_action(self, player: 'Player', action: str) -> None:
@@ -489,98 +516,85 @@ class ConcreteGame(Game):
             self._execute_play_land(player)
         elif action == "tap_land":
              self._execute_tap_land(player)
-        # Add other actions later
         else:
             print(f"[Game Loop] Warning: Unknown action '{action}' chosen.")
-            # If an unknown action occurs, treat it as passing priority for now
             self.priority_manager.pass_priority(player, self)
 
     def _execute_play_land(self, player: 'Player'):
          """Handles the process of playing a land."""
-         # 1. Choose land from hand
          hand = player.get_hand()
          hand_objs = [self.get_object(oid) for oid in hand.get_object_ids()]
-         # Filter for actual land cards using card_data
          land_cards_in_hand = [obj for obj in hand_objs if obj and obj.card_data and CardType.LAND in obj.card_data.card_types]
 
          if not land_cards_in_hand:
-             print("[Action] No land cards in hand to play.")
+             # This state shouldn't be reachable if _get_legal_actions is correct
+             print("[Action] Error: play_land chosen but no land cards found in hand.")
              return
 
-         # TODO: Use InputHandler to choose *which* land
-         # For now, just play the first one found
-         chosen_land_obj = land_cards_in_hand[0]
-         # Access name via card_data here too, as it was likely missed in previous edits
-         print(f"[Action] Auto-playing {chosen_land_obj.card_data.name} from hand.")
+         chosen_land_obj = player.input_handler.choose_card_from_list(
+             land_cards_in_hand, "Choose a land to play:"
+         )
 
-         # 2. Move card to battlefield
+         if not chosen_land_obj:
+             print("[Action] No land chosen to play.")
+             self.priority_manager.pass_priority(player, self)
+             return
+
+         print(f"[Action] Playing {chosen_land_obj.card_data.name} from hand.")
          hand.remove(chosen_land_obj.id)
          battlefield = self.get_zone(ZoneId.BATTLEFIELD)
          battlefield.add(chosen_land_obj.id)
-         chosen_land_obj.zone = battlefield # Update object's zone reference
-         chosen_land_obj.controller = player # Ensure controller is set correctly
-         # Assuming ConcretePermanent has enters_battlefield
+         chosen_land_obj.zone = battlefield
+         chosen_land_obj.controller = player
          if isinstance(chosen_land_obj, ConcretePermanent):
-             chosen_land_obj.enters_battlefield(self) # Trigger ETB effects (if any)
-         else:
-              print(f"Warning: Played object {chosen_land_obj} is not a ConcretePermanent, cannot call enters_battlefield.")
+             chosen_land_obj.enters_battlefield(self)
 
-         # 3. Update game state
          player.lands_played_this_turn += 1
          print(f"[Action] {chosen_land_obj.card_data.name} entered the battlefield.")
-
-         # Playing a land doesn't use the stack, AP retains priority
-         self.priority_manager.set_priority(player)
-         # Check SBAs after state change
+         self.priority_manager.set_priority(player) # Player retains priority after playing land
          self.check_state_based_actions()
 
     def _execute_tap_land(self, player: 'Player'):
          """Handles the process of tapping a land for mana."""
-         # 1. Choose land on battlefield
          battlefield = self.get_zone(ZoneId.BATTLEFIELD)
          controlled_perms = [p for p in battlefield.get_objects(self) if p.controller == player]
-         # Access card_types via card_data
          untapped_lands = [p for p in controlled_perms if p.card_data and CardType.LAND in p.card_data.card_types and not p.is_tapped()]
 
          if not untapped_lands:
-             print("[Action] No untapped lands to tap for mana.")
+             # This state shouldn't be reachable if _get_legal_actions is correct
+             print("[Action] Error: tap_land chosen but no untapped lands found.")
              return
 
-         # TODO: Use InputHandler to choose *which* land
-         # For now, just tap the first one found
-         chosen_land_perm = untapped_lands[0]
-         # Access name via card_data here too
-         print(f"[Action] Auto-tapping {chosen_land_perm.card_data.name} for mana.")
+         chosen_land_perm = player.input_handler.choose_permanent_from_list(
+             untapped_lands, "Choose an untapped land to tap for mana:"
+         )
 
-         # 2. Tap the permanent
-         # Check if the object actually has a tap method (should be ConcretePermanent)
+         if not chosen_land_perm:
+             print("[Action] No land chosen to tap.")
+             self.priority_manager.pass_priority(player, self)
+             return
+
+         print(f"[Action] Tapping {chosen_land_perm.card_data.name} for mana.")
          if hasattr(chosen_land_perm, 'tap'):
             chosen_land_perm.tap()
          else:
             print(f"Warning: Cannot tap object {chosen_land_perm} as it lacks a 'tap' method.")
-            return # Cannot proceed if object can't be tapped
+            return
 
-         # 3. Add mana (Simplified: Assume basic lands add one of their color)
          mana_produced: Optional[ManaType] = None
-         # Access name via card_data
          if chosen_land_perm.card_data.name == "Plains":
              mana_produced = ManaType.WHITE
          elif chosen_land_perm.card_data.name == "Forest":
              mana_produced = ManaType.GREEN
-         # Add more basic lands here...
-         
+
          if mana_produced:
-             # Pass mana_type and amount as separate arguments
              player.mana_pool.add(mana_produced, 1)
              print(f"[Action] Added {{ {mana_produced.name}: 1 }} to Player {player.id}'s mana pool. Current: {player.mana_pool}")
          else:
              print(f"[Action] Warning: Don't know what mana {chosen_land_perm.card_data.name} produces.")
 
-         # Activating a mana ability doesn't use the stack, player retains priority
-         self.priority_manager.set_priority(player)
-         # SBAs unlikely needed after mana ability, but check for consistency
+         self.priority_manager.set_priority(player) # Player retains priority after mana ability
          self.check_state_based_actions()
-
 
     def run_main_loop(self) -> None:
         """Contains the core game loop: turn progression, priority passing, SBA checks, stack resolution."""
