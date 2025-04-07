@@ -1,5 +1,6 @@
 from typing import List, Tuple
 from ..cards.card_data import CardData
+from ..cards.ability_definition import AbilityDefinition
 from ..enums import CardType, ManaType, SubType
 from ..costs.mana_cost import SimpleManaCost
 
@@ -11,4 +12,4 @@ class GrizzlyBearsData(CardData):
     subtypes: Tuple[SubType, ...] = (SubType.BEAR,)
     power: int = 2
     toughness: int = 2
-    # No abilities for vanilla creature 
+    abilities: List[AbilityDefinition] = []

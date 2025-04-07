@@ -1,4 +1,6 @@
 from typing import List, Tuple
+
+from ..cards.ability_definition import AbilityDefinition
 from ..cards.card_data import CardData
 from ..enums import CardType, ManaType, SubType
 from ..costs.mana_cost import SimpleManaCost
@@ -11,4 +13,4 @@ class SavannahLionsData(CardData):
     subtypes: Tuple[SubType, ...] = (SubType.CAT,)
     power: int = 2
     toughness: int = 1
-    # No abilities for vanilla creature 
+    abilities: List[AbilityDefinition] = []
